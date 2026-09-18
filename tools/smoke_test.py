@@ -98,6 +98,19 @@ def main(argv):
         ok_all &= check('还原后课程也在',
                         srv.ok('/api/courses?week=%d' % week)['total'] == 1)
 
+        import fixtures
+        tt_raw = fixtures.timetable_xlsx()
+        tt_b64 = base64.b64encode(tt_raw).decode('ascii')
+        plan = srv.ok('/api/import/preview', 'POST', {'content': tt_b64})
+        ok_all &= check('导入预览能读出课程与课次',
+                        plan['courseCount'] == 4 and plan['totalLessons'] == 7,
+                        str(plan)[:160])
+        imp = srv.ok('/api/import', 'POST', {'content': tt_b64, 'mode': 'merge'})
+        ok_all &= check('导入后排进了各周', imp['added'] == 7 and imp['weeks'] == [1, 2, 3],
+                        str(imp)[:160])
+        ok_all &= check('导入顺手建了缺的节次', imp['createdPeriods'] == ['第 1 节', '第 2 节', '第 3 节'])
+        ok_all &= check('导入不删已有的课', srv.ok('/api/courses?week=%d' % week)['total'] == 1 + 3)
+
         target = srv.data_dir / 'settings.json'
         target.write_text('{"broken"', encoding='utf-8')
         warned = srv.ok('/api/bootstrap')['warnings']

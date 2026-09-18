@@ -254,6 +254,48 @@ def delete_period(pid, mode='cancel'):
     return {'used': used, 'deleted': True}
 
 
+def ensure_periods(labels):
+    """按给定顺序确保这些节次存在（名称相同的直接复用）。
+
+    返回 (label -> id 的映射, 新建出来的节次列表)。
+    时间一律留空，由用户自己填——导入不替用户猜作息。
+    """
+    settings = get_settings()
+    periods = list(settings.get('periods') or [])
+    used_ids = {p.get('id', '') for p in periods}
+    by_label = {}
+    for p in periods:
+        by_label.setdefault(str(p.get('label') or '').strip(), p)
+
+    def next_id():
+        n = 1
+        while ('p%d' % n) in used_ids:
+            n += 1
+        pid = 'p%d' % n
+        used_ids.add(pid)
+        return pid
+
+    mapping = {}
+    created = []
+    for label in labels:
+        label = str(label or '').strip()
+        if not label:
+            continue
+        hit = by_label.get(label)
+        if hit is not None:
+            mapping[label] = hit['id']
+            continue
+        item = {'id': next_id(), 'label': label, 'start': '', 'end': ''}
+        periods.append(item)
+        by_label[label] = item
+        mapping[label] = item['id']
+        created.append(item)
+    if created:
+        settings['periods'] = periods
+        write('settings', settings)
+    return mapping, created
+
+
 # ---------- 我的地点 ----------
 def _coord(value, low, high):
     """把坐标收成合法数字；不合法返回 None。"""
@@ -511,6 +553,33 @@ def copy_week(src_week, targets, mode='overwrite'):
 def clear_week(week):
     save_week(week, [])
     return True
+
+
+def import_courses(by_week, mode='merge'):
+    """把导入解析出来的课按周写进去。
+
+    by_week: {周次: [课程...]}，课程里已经带好 slot / spanEnd 等字段。
+    mode: merge 追加，overwrite 覆盖整周。
+    """
+    raw = get_courses_raw()
+    weeks = raw['weeks']
+    added = 0
+    touched = []
+    for week in sorted(by_week, key=lambda w: int(w)):
+        key = str(int(week))
+        fresh = []
+        for lesson in by_week[week]:
+            item = dict(lesson)
+            item['id'] = new_id('c') + str(len(fresh))
+            fresh.append(item)
+        if mode == 'overwrite':
+            weeks[key] = fresh
+        else:
+            weeks[key] = list(weeks.get(key) or []) + fresh
+        added += len(fresh)
+        touched.append(int(week))
+    write('courses', raw)
+    return {'added': added, 'weeks': touched}
 
 
 # ---------- 备忘录 ----------

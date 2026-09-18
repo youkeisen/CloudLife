@@ -554,6 +554,7 @@ function initWeekSel() {
     });
     $('addCourse').addEventListener('click', function () { openCourseDialog(null); });
     $('copyWeek').addEventListener('click', copyWeekDialog);
+    $('importTt').addEventListener('click', pickTimetableFile);
     $('clearWeek').addEventListener('click', function () {
       showDlg('清空第 ' + curWeek + ' 周',
         '<div class="small">会删掉这一周的全部课程，不可撤销。</div>',
@@ -736,6 +737,117 @@ function copyWeekDialog() {
     }]);
   Array.prototype.forEach.call(document.querySelectorAll('#dst .chip'), function (el) {
     el.addEventListener('click', function () { el.classList.toggle('on'); });
+  });
+}
+
+/* ---------- 导入课表 ---------- */
+var importPayload = null;
+
+function pickTimetableFile() {
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.xlsx';
+  input.style.display = 'none';
+  input.addEventListener('change', function () {
+    var f = input.files && input.files[0];
+    if (!f) return;
+    if (f.size > 6 * 1024 * 1024) { toast('文件超过 6MB 了，确认一下是不是导错了'); return; }
+    var reader = new FileReader();
+    reader.onload = function () {
+      var text = String(reader.result || '');
+      var b64 = text.indexOf(',') >= 0 ? text.split(',')[1] : text;
+      importPayload = b64;
+      toast('正在读课表…');
+      api('/api/import/preview', { method: 'POST', body: { content: b64 } })
+        .then(showImportDialog)
+        .catch(function () { importPayload = null; });
+    };
+    reader.onerror = function () { toast('文件读不出来'); };
+    reader.readAsDataURL(f);
+  });
+  document.body.appendChild(input);
+  input.click();
+  setTimeout(function () { document.body.removeChild(input); }, 0);
+}
+
+function importPeriodsHtml(plan) {
+  var fresh = plan.newPeriods || [];
+  var reuse = plan.reusePeriods || [];
+  return '<div class="small">节次：' +
+    (fresh.length ? '<b>' + fresh.length + '</b> 个新的会按课表里的节次名建出来（时间留空，你后面自己填）：' +
+      esc(fresh.join('、')) : '不需要新建节次') +
+    (reuse.length ? '<br><span class="faint">已有的直接复用：' + esc(reuse.join('、')) + '</span>' : '') +
+    '</div>';
+}
+
+function showImportDialog(plan) {
+  var weeks = plan.weeks || [];
+  var span = weeks.length ? (weeks[0] + ' – ' + weeks[weeks.length - 1] + ' 周') : '—';
+  var rooms = {};
+  (plan.courses || []).forEach(function (c) { if (c.room) rooms[c.room] = 1; });
+  showDlg('导入课表',
+    '<div class="small faint" style="margin-bottom:8px">' + esc(plan.sheet || '课表') +
+    (plan.title ? '：' + esc(plan.title) : '') + '</div>' +
+    '<div class="small" style="line-height:1.9">' +
+    '读到 <b>' + plan.courseCount + '</b> 条课程记录，覆盖 <b>' + span + '</b>，' +
+    '共要排 <b>' + plan.totalLessons + '</b> 节课<br>' +
+    '节次 ' + (plan.periodLabels || []).length + ' 个，涉及地点 ' + Object.keys(rooms).length + ' 个' +
+    '</div>' +
+    '<div class="small faint" style="margin:8px 0;max-height:130px;overflow:auto">' +
+    (plan.courses || []).slice(0, 12).map(function (c) {
+      return '· ' + esc(c.dayText) + ' ' + esc(c.periodFrom) + '–' + esc(c.periodTo) + '　' +
+        esc(c.name) + '<span class="faint">（' + esc(c.weekText) + '周' +
+        (c.room ? ' · ' + esc(c.room) : '') + '）</span>';
+    }).join('<br>') +
+    (plan.courseCount > 12 ? '<br>… 还有 ' + (plan.courseCount - 12) + ' 条' : '') +
+    '</div>' +
+    importPeriodsHtml(plan) +
+    (plan.warnings && plan.warnings.length ?
+      '<div class="small" style="color:var(--warn);margin-top:6px">注意：' +
+      esc(plan.warnings.join('；')) + '</div>' : '') +
+    '<div class="field" style="margin-top:10px"><label>这次导入的课怎么放进各周</label>' +
+    '<select id="imode">' +
+    '<option value="merge">追加：保留已有课程，导入的加进去</option>' +
+    '<option value="overwrite">覆盖：导入涉及的那几周直接替换</option>' +
+    '</select></div>' +
+    '<div class="small faint" style="margin-top:6px">导入前会自动备份一份，选错也能还原。</div>',
+    [{ text: '取消', onClick: function () { importPayload = null; closeDlg(); } }, {
+      text: '导入', kind: 'primary', onClick: function () {
+        var mode = $('imode').value;
+        var body = { content: importPayload, mode: mode };
+        closeDlg();
+        api('/api/import', { method: 'POST', body: body }).then(function (r) {
+          importPayload = null;
+          toast('导入完成：' + r.added + ' 节课');
+          if (r.createdPeriods && r.createdPeriods.length) {
+            showImportDone(r);
+          } else {
+            finishImport(r);
+          }
+        });
+      }
+    }]);
+}
+
+function showImportDone(r) {
+  showDlg('导入完成',
+    '<div class="small" style="line-height:1.9">' +
+    '排入 <b>' + r.added + '</b> 节课，覆盖 ' + (r.weeks || []).length + ' 周<br>' +
+    '新建节次 <b>' + r.createdPeriods.length + '</b> 个：' + esc(r.createdPeriods.join('、')) +
+    '</div>' +
+    '<div class="small faint" style="margin-top:8px">这些节次还没有起止时间，去「数据与设置 → 作息与节次」填一下，' +
+    '首页才能显示出「正在上 / 下一节」。备份文件：' + esc(r.backupFile || '—') + '</div>',
+    [{ text: '知道了', kind: 'primary', onClick: function () { closeDlg(); finishImport(r); } }]);
+}
+
+function finishImport(r) {
+  var first = (r.weeks || [])[0];
+  if (first) curWeek = first;
+  return reloadSettings().then(function () {
+    if ($('weekSel')) $('weekSel').value = curWeek;
+    return renderCourses();
+  }).then(function () {
+    toast('已导入 ' + r.added + ' 节课，当前显示第 ' + curWeek + ' 周');
   });
 }
 

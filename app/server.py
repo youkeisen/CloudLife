@@ -628,6 +628,131 @@ def api_clear_week(h, ctx):
     h._json(ok({'week': week, 'total': 0}))
 
 
+# ---------- 导入课表 ----------
+MAX_UPLOAD = 6 * 1024 * 1024
+
+
+def _upload_bytes(body):
+    import base64
+    raw_b64 = (body or {}).get('content') or ''
+    if not raw_b64:
+        raise ValueError('没有拿到文件内容')
+    if len(raw_b64) > MAX_UPLOAD * 2:
+        raise ValueError('文件太大了，先确认是不是导错了文件')
+    text = raw_b64.split(',', 1)[1] if raw_b64.startswith('data:') else raw_b64
+    try:
+        raw = base64.b64decode(text, validate=False)
+    except Exception as exc:
+        raise ValueError('文件内容解析不了：' + str(exc))
+    if not raw:
+        raise ValueError('文件是空的')
+    if len(raw) > MAX_UPLOAD:
+        raise ValueError('文件超过 6MB 了，这个大小的课表不太正常')
+    return raw
+
+
+def _import_plan(raw):
+    import timetable as tt
+    parsed = tt.parse_timetable(raw)
+    labels = [tt.period_label_text(l) for l in tt.period_labels(parsed)]
+    existing = {str(p.get('label') or '').strip() for p in store.periods()}
+    courses = []
+    for c in parsed['courses']:
+        courses.append({
+            'day': c['day'],
+            'dayText': tt.DAY_CN.get(c['day'], ''),
+            'periodFrom': tt.period_label_text(c['periodFrom']),
+            'periodTo': tt.period_label_text(c['periodTo']),
+            'name': c['name'],
+            'className': c['className'],
+            'teacher': c['teacher'],
+            'room': c['room'],
+            'weekText': c['weekText'],
+            'weeks': c['weeks'],
+            'lessonCount': len(c['weeks']),
+        })
+    return {
+        'parsed': parsed,
+        'labels': labels,
+        'plan': {
+            'sheet': parsed['sheet'],
+            'title': parsed['title'],
+            'student': parsed['student'],
+            'courses': courses,
+            'courseCount': len(courses),
+            'warnings': parsed['warnings'],
+            'periodLabels': labels,
+            'newPeriods': [l for l in labels if l not in existing],
+            'reusePeriods': [l for l in labels if l in existing],
+            'weeks': tt.week_span(parsed),
+            'totalLessons': tt.total_lessons(parsed),
+        },
+    }
+
+
+def api_import_preview(h, ctx):
+    """只解析给用户看，一个字都不写盘。"""
+    raw = _upload_bytes(ctx['body'] or {})
+    import timetable as tt
+    try:
+        built = _import_plan(raw)
+    except tt.TimetableError as exc:
+        h._json(fail(str(exc), 'bad_timetable'))
+        return
+    h._json(ok(built['plan']))
+
+
+def api_import(h, ctx):
+    import backup
+    import timetable as tt
+    body = ctx['body'] or {}
+    mode = body.get('mode') or 'merge'
+    if mode not in ('merge', 'overwrite'):
+        raise ValueError('未知的导入方式：' + str(mode))
+    raw = _upload_bytes(body)
+    try:
+        built = _import_plan(raw)
+    except tt.TimetableError as exc:
+        h._json(fail(str(exc), 'bad_timetable'))
+        return
+    parsed = built['parsed']
+    # 导入前先自动留一份，手滑了能退回来
+    backup_path, _manifest = backup.save_backup(DATA_DIR, store.backups_dir())
+    backup.keep_recent(store.backups_dir(), limit=10)
+
+    mapping, created = store.ensure_periods(built['labels'])
+    by_week = {}
+    for c in parsed['courses']:
+        start_id = mapping.get(tt.period_label_text(c['periodFrom']))
+        end_label = tt.period_label_text(c['periodTo'])
+        end_id = mapping.get(end_label)
+        if not start_id:
+            continue
+        item = {
+            'day': c['day'],
+            'slot': start_id,
+            'spanEnd': end_id if (end_id and end_id != start_id) else '',
+            'name': c['name'],
+            'location': c['room'],
+            'teacher': c['teacher'],
+            'note': (c['className'] + ' ' + c['weekText'] + '周').strip() if c['className'] else (c['weekText'] + '周'),
+            'color': '',
+        }
+        for w in c['weeks']:
+            by_week.setdefault(w, []).append(item)
+    result = store.import_courses(by_week, mode)
+    h._json(ok({
+        'mode': mode,
+        'added': result['added'],
+        'weeks': result['weeks'],
+        'courses': built['plan']['courseCount'],
+        'createdPeriods': [p['label'] for p in created],
+        'reusedPeriods': built['plan']['reusePeriods'],
+        'backupFile': os.path.basename(backup_path),
+        'warnings': built['plan']['warnings'],
+    }))
+
+
 def page_index(h, ctx):
     h._static('index.html')
 
@@ -659,6 +784,8 @@ ROUTES = {
     ('DELETE', '/api/courses'): api_delete_course,
     ('POST', '/api/courses/copy'): api_copy_week,
     ('POST', '/api/courses/clear'): api_clear_week,
+    ('POST', '/api/import/preview'): api_import_preview,
+    ('POST', '/api/import'): api_import,
     ('GET', '/api/notes'): api_list_notes,
     ('POST', '/api/notes'): api_add_note,
     ('PUT', '/api/notes'): api_update_note,

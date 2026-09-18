@@ -1,0 +1,440 @@
+# -*- coding: utf-8 -*-
+"""数据层：四份 JSON 的读写、默认值、原子写、损坏恢复。"""
+import json
+import os
+import tempfile
+import threading
+import time
+import uuid
+from datetime import date, datetime, timedelta, timezone
+
+CST = timezone(timedelta(hours=8))
+SCHEMA_VERSION = 1
+
+DEFAULT_SETTINGS = {
+    'version': SCHEMA_VERSION,
+    'displayName': '',
+    'semesterName': '',
+    'week1Monday': '',
+    'weekStartsOn': 1,
+    'campus': '',
+    'periods': [],
+    'weatherCity': {'name': '', 'latitude': None, 'longitude': None, 'timezone': 'Asia/Shanghai'},
+    'refreshMinutes': 30,
+    'theme': 'system',
+}
+
+DEFAULT_COURSES = {'version': SCHEMA_VERSION, 'weeks': {}}
+DEFAULT_NOTES = {'version': SCHEMA_VERSION, 'notes': []}
+DEFAULT_WEATHER = {
+    'version': SCHEMA_VERSION,
+    'fetchedAt': '',
+    'city': {'name': '', 'latitude': None, 'longitude': None},
+    'payload': None,
+}
+
+DEFAULTS = {
+    'settings': DEFAULT_SETTINGS,
+    'courses': DEFAULT_COURSES,
+    'notes': DEFAULT_NOTES,
+    'weather_cache': DEFAULT_WEATHER,
+}
+
+_lock = threading.RLock()
+_data_dir = None
+_warnings = []
+
+
+def init(data_dir):
+    global _data_dir, _warnings
+    _data_dir = str(data_dir)
+    _warnings = []
+    os.makedirs(_data_dir, exist_ok=True)
+    os.makedirs(backups_dir(), exist_ok=True)
+    ensure_files()
+    return _data_dir
+
+
+def data_dir():
+    return _data_dir
+
+
+def backups_dir():
+    return os.path.join(_data_dir, 'backups')
+
+
+def warnings():
+    return list(_warnings)
+
+
+def clear_warnings():
+    global _warnings
+    _warnings = []
+
+
+def append_warning(name, message, broken_copy=''):
+    _warnings.append({'file': name + '.json', 'brokenCopy': broken_copy, 'message': message})
+
+
+def filepath(name):
+    return os.path.join(_data_dir, name + '.json')
+
+
+def _default_of(name):
+    return json.loads(json.dumps(DEFAULTS[name]))
+
+
+def ensure_files():
+    for name in DEFAULTS:
+        p = filepath(name)
+        if not os.path.isfile(p):
+            write(name, _default_of(name))
+
+
+def write(name, obj):
+    """原子写：临时文件 -> os.replace，避免中断写坏文件。"""
+    path = filepath(name)
+    directory = os.path.dirname(path)
+    with _lock:
+        fd, tmp = tempfile.mkstemp(prefix=name + '.', suffix='.tmp', dir=directory)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(obj, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        except Exception:
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+            raise
+    return obj
+
+
+def read(name):
+    """读一份数据；坏文件改名留存，返回默认值并记录警告。"""
+    path = filepath(name)
+    if not os.path.isfile(path):
+        obj = _default_of(name)
+        write(name, obj)
+        return obj
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            obj = json.load(f)
+    except Exception as exc:
+        stamp = time.strftime('%Y%m%d-%H%M%S')
+        broken = path + '.corrupt-' + stamp
+        try:
+            os.replace(path, broken)
+        except OSError:
+            pass
+        _warnings.append({
+            'file': name + '.json',
+            'brokenCopy': os.path.basename(broken),
+            'message': '数据文件损坏，已恢复默认内容：' + name + '.json（' + str(exc) + '）',
+        })
+        obj = _default_of(name)
+        write(name, obj)
+        return obj
+    if not isinstance(obj, dict):
+        obj = _default_of(name)
+        write(name, obj)
+    obj.setdefault('version', SCHEMA_VERSION)
+    return obj
+
+
+# ---------- 小工具 ----------
+_counter = [0]
+
+
+def new_id(prefix):
+    _counter[0] += 1
+    return '%s%s_%d_%s' % (prefix, datetime.now(CST).strftime('%Y%m%d%H%M%S'),
+                           _counter[0], uuid.uuid4().hex[:8])
+
+
+def today_iso():
+    return datetime.now(CST).date().isoformat()
+
+
+def week_of(date_iso, week1_monday):
+    """第几教学周；未设置或早于第一周返回 None。"""
+    if not week1_monday:
+        return None
+    try:
+        d = date.fromisoformat(date_iso)
+        start = date.fromisoformat(week1_monday)
+    except ValueError:
+        return None
+    delta = (d - start).days
+    if delta < 0:
+        return None
+    return delta // 7 + 1
+
+
+def monday_of(week, week1_monday):
+    if not week1_monday:
+        return None
+    start = date.fromisoformat(week1_monday)
+    return (start + timedelta(days=7 * (int(week) - 1))).isoformat()
+
+
+# ---------- 设置 ----------
+def get_settings():
+    s = read('settings')
+    base = _default_of('settings')
+    for k, v in base.items():
+        if k not in s:
+            s[k] = v
+    return s
+
+
+def save_settings(obj):
+    cleaned = json.loads(json.dumps(get_settings()))
+    cleaned.update(obj or {})
+    cleaned['version'] = SCHEMA_VERSION
+    cleaned['periods'] = list(obj.get('periods', cleaned.get('periods', [])))
+    return write('settings', cleaned)
+
+
+def periods():
+    return get_settings().get('periods', [])
+
+
+def next_period_id():
+    ids = [p.get('id', '') for p in periods()]
+    n = 1
+    while ('p%d' % n) in ids:
+        n += 1
+    return 'p%d' % n
+
+
+def period_usage(pid):
+    """有多少节课用到了某个节次。"""
+    count = 0
+    for _w, lessons in read('courses').get('weeks', {}).items():
+        for c in lessons:
+            if c.get('slot') == pid or c.get('spanEnd') == pid:
+                count += 1
+    return count
+
+
+def delete_period(pid, mode='cancel'):
+    """删除节次。mode: move / drop / cancel。返回 {used, deleted}"""
+    used = period_usage(pid)
+    if used and mode == 'cancel':
+        return {'used': used, 'deleted': False}
+    settings = get_settings()
+    rest = [p for p in settings['periods'] if p.get('id') != pid]
+    if used:
+        if mode == 'drop':
+            raw = read('courses')
+            for w in list(raw.get('weeks', {}).keys()):
+                raw['weeks'][w] = [c for c in raw['weeks'][w]
+                                   if c.get('slot') != pid and c.get('spanEnd') != pid]
+            write('courses', raw)
+        else:  # move
+            target = rest[0]['id'] if rest else None
+            raw = read('courses')
+            for w in list(raw.get('weeks', {}).keys()):
+                for c in raw['weeks'][w]:
+                    if c.get('slot') == pid:
+                        c['slot'] = target
+                    if c.get('spanEnd') == pid:
+                        c['spanEnd'] = ''
+            write('courses', raw)
+    settings['periods'] = rest
+    write('settings', settings)
+    return {'used': used, 'deleted': True}
+
+
+# ---------- 课程 ----------
+def get_courses_raw():
+    raw = read('courses')
+    raw.setdefault('weeks', {})
+    return raw
+
+
+def list_week(week):
+    raw = get_courses_raw()
+    return list(raw['weeks'].get(str(int(week)), []))
+
+
+def save_week(week, lessons):
+    raw = get_courses_raw()
+    raw['weeks'][str(int(week))] = lessons
+    write('courses', raw)
+    return lessons
+
+
+def find_course(cid):
+    raw = get_courses_raw()
+    for week, lessons in raw['weeks'].items():
+        for c in lessons:
+            if c.get('id') == cid:
+                return week, c
+    return None, None
+
+
+def add_course(data):
+    week = int(data.get('week') or 1)
+    lessons = list_week(week)
+    item = {
+        'id': new_id('c'),
+        'day': int(data.get('day') or 1),
+        'slot': str(data.get('slot') or ''),
+        'spanEnd': str(data.get('spanEnd') or ''),
+        'name': str(data.get('name') or '').strip(),
+        'location': str(data.get('location') or '').strip(),
+        'teacher': str(data.get('teacher') or '').strip(),
+        'note': str(data.get('note') or '').strip(),
+        'color': str(data.get('color') or '').strip(),
+    }
+    if not item['name']:
+        raise ValueError('课程名不能为空')
+    lessons.append(item)
+    save_week(week, lessons)
+    return item
+
+
+def update_course(data):
+    cid = data.get('id')
+    if not cid:
+        raise ValueError('缺少课程 id')
+    raw = get_courses_raw()
+    weeks = raw['weeks']
+    found_week, item = None, None
+    for w in list(weeks.keys()):
+        for c in weeks[w]:
+            if c.get('id') == cid:
+                found_week, item = w, c
+                break
+        if item:
+            break
+    if item is None:
+        raise ValueError('课程不存在：' + str(cid))
+    for field in ('day', 'slot', 'spanEnd', 'name', 'location', 'teacher', 'note', 'color'):
+        if field in data:
+            item[field] = data[field]
+    if data.get('week') is not None:
+        target = str(int(data['week']))
+        if target != found_week:
+            weeks[found_week] = [c for c in weeks[found_week] if c.get('id') != cid]
+            weeks.setdefault(target, []).append(item)
+    write('courses', raw)
+    return item
+
+
+def delete_course(cid):
+    week, item = find_course(cid)
+    if item is None:
+        return False
+    lessons = [c for c in list_week(week) if c.get('id') != cid]
+    save_week(week, lessons)
+    return True
+
+
+def copy_week(src_week, targets, mode='overwrite'):
+    """整周复制。mode: overwrite / merge / empty-only"""
+    source = list_week(src_week)
+    result = {}
+    for t in targets:
+        t = int(t)
+        if t == int(src_week):
+            continue
+        dest = list_week(t)
+        fresh = []
+        for c in source:
+            clone = dict(c)
+            clone['id'] = new_id('c') + str(len(fresh))
+            fresh.append(clone)
+        if mode == 'overwrite':
+            final = fresh
+        elif mode == 'merge':
+            final = dest + fresh
+        else:  # empty-only
+            final = fresh if not dest else dest
+        save_week(t, final)
+        result[str(t)] = len(final)
+    return result
+
+
+def clear_week(week):
+    save_week(week, [])
+    return True
+
+
+# ---------- 备忘录 ----------
+def list_notes(include_archived=False):
+    notes = read('notes').get('notes', [])
+    if include_archived:
+        return list(notes)
+    return [n for n in notes if not n.get('archived')]
+
+
+def save_notes_obj(notes):
+    raw = read('notes')
+    raw['notes'] = notes
+    raw['version'] = SCHEMA_VERSION
+    return write('notes', raw)
+
+
+def add_note(data):
+    notes = read('notes').get('notes', [])
+    item = {
+        'id': new_id('n'),
+        'title': str(data.get('title') or '').strip(),
+        'type': data.get('type') or 'text',
+        'body': str(data.get('body') or ''),
+        'items': [{'text': str(i.get('text', '')), 'done': bool(i.get('done'))}
+                  for i in (data.get('items') or [])],
+        'tags': [str(t).strip() for t in (data.get('tags') or []) if str(t).strip()],
+        'pinned': bool(data.get('pinned')),
+        'archived': bool(data.get('archived')),
+        'createdAt': datetime.now(CST).isoformat(timespec='seconds'),
+        'updatedAt': datetime.now(CST).isoformat(timespec='seconds'),
+    }
+    notes.append(item)
+    save_notes_obj(notes)
+    return item
+
+
+def update_note(data):
+    cid = data.get('id')
+    notes = read('notes').get('notes', [])
+    for n in notes:
+        if n.get('id') == cid:
+            for field in ('title', 'type', 'body', 'items', 'tags', 'pinned', 'archived'):
+                if field in data:
+                    n[field] = data[field]
+            n['updatedAt'] = datetime.now(CST).isoformat(timespec='seconds')
+            save_notes_obj(notes)
+            return n
+    raise ValueError('备忘录不存在：' + str(cid))
+
+
+def delete_note(cid):
+    notes = read('notes').get('notes', [])
+    rest = [n for n in notes if n.get('id') != cid]
+    if len(rest) == len(notes):
+        return False
+    save_notes_obj(rest)
+    return True
+
+
+# ---------- 天气缓存 ----------
+def get_weather_cache():
+    return read('weather_cache')
+
+
+def set_weather_cache(city, payload):
+    obj = {
+        'version': SCHEMA_VERSION,
+        'fetchedAt': datetime.now(CST).isoformat(timespec='seconds'),
+        'city': city or {'name': '', 'latitude': None, 'longitude': None},
+        'payload': payload,
+    }
+    write('weather_cache', obj)
+    return obj

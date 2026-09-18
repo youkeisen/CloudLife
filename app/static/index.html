@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyDay</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside>
+  <div class="logo"><i></i>MyDay</div>
+  <div class="nav on" data-p="home"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8.5 10 3l7 5.5V17H3z"/></svg>首页</div>
+  <div class="nav" data-p="courses"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4"/></svg>课程</div>
+  <div class="nav" data-p="weather"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 14a3 3 0 0 1 .3-6 4 4 0 0 1 7.5 1.2A2.8 2.8 0 0 1 14 14z"/></svg>天气</div>
+  <div class="nav" data-p="notes"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="3" width="12" height="14" rx="2"/><path d="M7 7h6M7 10h6M7 13h3"/></svg>备忘录</div>
+  <div class="nav" data-p="settings"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="2.6"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.5 4.5 6 6M14 14l1.5 1.5M15.5 4.5 14 6M6 14l-1.5 1.5"/></svg>数据与设置</div>
+  <div class="navhint">MyDay v1.0<br>数据存本机，随时可备份</div>
+</aside>
+<main>
+  <header class="topbar">
+    <div><h1 id="ttl">首页</h1><div class="sub" id="sub">今天的课、天气和备忘</div></div>
+    <div class="right"><span id="today">—</span><span class="pill" id="weekpill">—</span></div>
+  </header>
+  <div id="banners"></div>
+  <div class="scroll">
+
+    <section class="page on" id="p-home">
+      <div class="hero">
+        <div><div class="big" id="greet">你好</div><div class="meta" id="homedate">正在加载…</div></div>
+        <div class="row" id="hometags"></div>
+      </div>
+      <div class="grid">
+        <div class="card g2">
+          <h3>今日课程 <span class="link" data-go="courses">去课程页 ›</span></h3>
+          <div id="homelessons"><div class="empty">正在加载…</div></div>
+        </div>
+        <div class="card">
+          <h3>今日天气 <span class="link" data-go="weather">去天气页 ›</span></h3>
+          <div id="homewx"><div class="empty">正在加载…</div></div>
+        </div>
+        <div class="card g3">
+          <h3>备忘录速览 <span class="link" data-go="notes">去备忘录页 ›</span></h3>
+          <div id="homenotes"><div class="empty">正在加载…</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="p-courses">
+      <div class="bar2">
+        <select id="weekSel" style="width:130px"></select>
+        <span class="small faint" id="weekRange"></span>
+        <button id="toToday">跳到本周</button>
+        <button class="primary" id="addCourse">添加课程</button>
+        <button id="copyWeek">复制本周到其他周…</button>
+        <button id="clearWeek">清空本周</button>
+        <span style="margin-left:auto" class="small faint" id="weekStat"></span>
+      </div>
+      <div class="card" style="padding:12px" id="ttCard"></div>
+    </section>
+
+    <section class="page" id="p-weather">
+      <div class="bar2">
+        <select id="citySel" style="width:180px"></select>
+        <input id="citySearch" placeholder="搜索城市…" style="width:150px">
+        <button id="citySearchBtn">搜索</button>
+        <button class="ghost" id="wxRefresh">刷新</button>
+        <span class="small faint" id="wxStamp"></span>
+      </div>
+      <div id="wxBody"></div>
+    </section>
+
+    <section class="page" id="p-notes">
+      <div class="notes">
+        <div class="col card" id="notegroups"></div>
+        <div class="col">
+          <input id="noteSearch" placeholder="搜索标题或内容…" style="width:100%;margin-bottom:10px">
+          <div id="notelist"></div>
+        </div>
+        <div class="col card" id="noteDetail"></div>
+      </div>
+    </section>
+
+    <section class="page" id="p-settings">
+      <div class="grid">
+        <div class="card g2">
+          <div class="set">
+            <h4>基本</h4>
+            <div class="line"><div>称呼<div class="desc">首页问候用，随便填</div></div>
+              <input id="s_name" style="width:180px" placeholder="未填写"></div>
+            <div class="line"><div>学期名<div class="desc">只用于显示</div></div>
+              <input id="s_sem" style="width:180px" placeholder="例如：本学期"></div>
+            <div class="line"><div>第 1 周周一日期<div class="desc">必填，用来算今天是第几教学周</div></div>
+              <input type="date" id="s_w1" style="width:180px"></div>
+            <div class="line"><div>每周起始日</div>
+              <select id="s_ws" style="width:180px"><option value="1">周一</option><option value="7">周日</option></select></div>
+            <div class="line"><div>校区 / 地点备注<div class="desc">可留空</div></div>
+              <input id="s_campus" style="width:180px" placeholder="未填写"></div>
+            <div class="line"><div>外观</div>
+              <select id="s_theme" style="width:180px"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="set">
+            <h4>天气</h4>
+            <div class="line"><div>城市<div class="desc">未设置时天气页会先让你选</div></div>
+              <select id="s_city" style="width:150px"></select></div>
+            <div class="line"><div>纬度 / 经度<div class="desc">也可直接手填坐标</div></div>
+              <div class="row"><input id="s_lat" style="width:88px" placeholder="纬度"><input id="s_lon" style="width:88px" placeholder="经度"><button id="s_lonSave">保存</button></div></div>
+            <div class="line"><div>自动刷新</div>
+              <select id="s_refresh" style="width:150px"><option value="10">10 分钟</option><option value="30">30 分钟</option><option value="60">1 小时</option><option value="0">仅手动</option></select></div>
+          </div>
+        </div>
+        <div class="card g3">
+          <div class="set">
+            <h4>作息与节次（全部自定义）</h4>
+            <div id="perList"></div>
+            <div class="row" style="margin-top:6px">
+              <button id="addPer">+ 添加节次</button>
+              <button id="genPer">生成若干空白节次</button>
+              <span class="small faint">名称和起止时间随便填，支持中午时段、晚课、实训</span>
+            </div>
+          </div>
+        </div>
+        <div class="card g2">
+          <div class="set">
+            <h4>数据</h4>
+            <div class="line"><div>存储位置<div class="desc" id="dataPath">—</div></div>
+              <button id="btnFolder">打开目录</button></div>
+            <div class="line"><div>手动备份<div class="desc">导出 zip，同时在本机留一份</div></div>
+              <button class="primary" id="btnBackup">立即备份</button></div>
+            <div class="line"><div>从备份还原<div class="desc">选择之前导出的 zip</div></div>
+              <div class="row"><input type="file" id="restoreFile" accept=".zip"><button id="btnRestore">还原</button></div></div>
+            <div class="line"><div>清空全部数据<div class="desc">不可撤销，会先自动备份</div></div>
+              <button class="danger" id="btnReset">清空</button></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="set">
+            <h4>关于</h4>
+            <div class="line"><div>版本</div><span class="small faint" id="ver">—</span></div>
+            <div class="line"><div>预置数据</div><span class="small faint">无</span></div>
+            <div class="line"><div>账号 / 云同步</div><span class="small faint">未启用</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+<div class="mask" id="mask"><div class="dlg" id="dlg"></div></div>
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

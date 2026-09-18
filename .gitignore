@@ -1,0 +1,18 @@
+# 个人数据目录：课程、备忘录、天气缓存、设置与备份，一律不进版本库
+data/
+backups/
+server.lock
+
+# Python 运行产物
+__pycache__/
+*.py[cod]
+*.pyo
+
+# 临时文件
+_last_run.txt
+*.tmp
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db

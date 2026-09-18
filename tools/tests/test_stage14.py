@@ -7,56 +7,21 @@
     三者挤在一个 flex 行里抢宽度，内容框被压成 0 宽。
     另外要求内容排在「清单」这两个字的下面。
 """
-import re
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / 'app'))
-from helpers import STATIC_DIR, ServerTestCase  # noqa: E402
+from helpers import ServerTestCase, decls_for, fn_body, read_static, specificity  # noqa: E402
 
 
 def read_css():
-    return (STATIC_DIR / 'style.css').read_text(encoding='utf-8')
+    return read_static('style.css')
 
 
 def read_js():
-    return (STATIC_DIR / 'app.js').read_text(encoding='utf-8')
-
-
-def css_rules():
-    """把 style.css 拆成 [(选择器, {声明})]；本文件里没有 @media，够用。"""
-    text = re.sub(r'/\*.*?\*/', '', read_css(), flags=re.S)
-    rules = []
-    for selector, body in re.findall(r'([^{}]+)\{([^{}]*)\}', text):
-        decls = {}
-        for part in body.split(';'):
-            if ':' in part:
-                key, value = part.split(':', 1)
-                decls[key.strip().lower()] = value.strip()
-        rules.append((' '.join(selector.split()), decls))
-    return rules
-
-
-def decls_for(selector):
-    for sel, decls in css_rules():
-        if sel == selector:
-            return decls
-    raise AssertionError('style.css 里找不到规则：' + selector)
-
-
-def specificity(selector):
-    selector = re.sub(r'\[[^\]]*\]', ' [] ', selector)
-    ids = classes = types = 0
-    for token in re.findall(r'#[\w-]+|\.[\w-]+|\[\]|[a-zA-Z][\w-]*|::?[\w-]+', selector):
-        if token == '[]' or token.startswith('.') or token.startswith(':'):
-            classes += 1
-        elif token.startswith('#'):
-            ids += 1
-        else:
-            types += 1
-    return (ids, classes, types)
+    return read_static('app.js')
 
 
 class TestTodoLayoutCss(unittest.TestCase):
@@ -92,13 +57,6 @@ class TestTodoLayoutCss(unittest.TestCase):
     def test_delete_button_does_not_shrink(self):
         decls = decls_for('.todoitem .del')
         self.assertEqual(decls.get('flex'), 'none')
-
-
-def fn_body(js, name):
-    """取一个顶层函数的函数体（顶层函数的收尾 } 一定在行首）。"""
-    start = js.index('function ' + name)
-    end = js.index('\n}\n', start)
-    return js[start:end + 3]
 
 
 class TestTodoMarkup(unittest.TestCase):

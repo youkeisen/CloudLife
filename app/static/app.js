@@ -1123,14 +1123,7 @@ function renderHome() {
       '<span class="tag">今日 ' + d.todayCount + ' 节课</span>';
     $('homelessons').innerHTML = homeLessonsHtml(d);
     $('homewx').innerHTML = homeWeatherHtml(d.weather);
-    $('homenotes').innerHTML = homeNotesHtml(d.notesPreview);
-    Array.prototype.forEach.call(document.querySelectorAll('#homenotes [data-note]'), function (el) {
-      el.addEventListener('click', function () {
-        curNoteId = el.dataset.note;
-        noteGroup = 'all';
-        go('notes');
-      });
-    });
+    renderHomeNotes(d.notesPreview);
     return d;
   });
 }
@@ -1183,17 +1176,104 @@ function homeWeatherHtml(wxState) {
     '</div>';
 }
 
+var homeNotesData = [];
+/* 每条速览的收放状态，默认展开；点小三角才收起 */
+var homeNoteOpen = {};
+
 function homeNotesHtml(list) {
   if (!list || !list.length) {
     return '<div class="empty"><b>还没有备忘录</b>想到什么随手记一条</div>';
   }
   return list.map(function (n) {
     var tags = (n.tags || []).filter(Boolean);
-    return '<div class="between" style="padding:7px 0;border-bottom:1px solid var(--line);cursor:pointer" data-note="' +
-      esc(n.id) + '"><div><div>' + (n.pinned ? '<span class="tag w">置顶</span> ' : '') +
-      esc(n.title) + '</div><span class="small faint">' + esc(n.summary || '空') + '</span></div>' +
-      '<span class="tag g">' + esc(tags.length ? tags.join('、') : noteTypeText(n)) + '</span></div>';
+    var open = homeNoteOpen[n.id] !== false;
+    var detail = '';
+    if (n.body) {
+      detail += '<div class="homeBody">' + esc(n.body) + (n.bodyCut ? '…' : '') + '</div>';
+    }
+    var items = n.items || [];
+    if (items.length) {
+      detail += '<div class="homeTodo">' + items.map(function (it, ix) {
+        return '<div class="homeTodoItem" data-note-id="' + esc(n.id) + '" data-item="' + ix +
+          '" title="点一下勾掉">' +
+          '<span class="bx' + (it.done ? ' on' : '') + '">' + (it.done ? '✓' : '') + '</span>' +
+          '<span class="tx' + (it.done ? ' on' : '') + '">' + esc(it.text || '（没写内容）') + '</span>' +
+          '</div>';
+      }).join('') +
+        (n.moreItems ? '<div class="small faint" style="padding-left:21px">… 还有 ' + n.moreItems + ' 项</div>' : '') +
+        '</div>';
+    }
+    return '<div class="homeNote" data-note="' + esc(n.id) + '">' +
+      '<div class="between">' +
+      '<div><div class="homeNoteTitle">' + (n.pinned ? '<span class="tag w">置顶</span> ' : '') +
+      '<span>' + esc(n.title || '无标题') + '</span>' +
+      '<span class="caret' + (open ? '' : ' closed') + '" data-caret="' + esc(n.id) +
+      '" title="' + (open ? '收起' : '展开') + '"></span></div>' +
+      '<span class="small faint">' + esc(n.summary || '空') + '</span></div>' +
+      '<span class="tag g">' + esc(tags.length ? tags.join('、') : noteTypeText(n)) + '</span></div>' +
+      '<div class="homeNoteBody' + (open ? '' : ' closed') + '">' + detail + '</div></div>';
   }).join('');
+}
+
+function renderHomeNotes(list) {
+  homeNotesData = list || [];
+  $('homenotes').innerHTML = homeNotesHtml(homeNotesData);
+  Array.prototype.forEach.call(document.querySelectorAll('#homenotes [data-caret]'), function (el) {
+    el.addEventListener('click', function (ev) {
+      // 收放别把整条点开了
+      ev.stopPropagation();
+      toggleHomeNote(el.dataset.caret);
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('#homenotes [data-note]'), function (el) {
+    el.addEventListener('click', function () {
+      curNoteId = el.dataset.note;
+      noteGroup = 'all';
+      go('notes');
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('#homenotes .homeTodoItem'), function (el) {
+    el.addEventListener('click', function (ev) {
+      // 勾选别把整条点开了
+      ev.stopPropagation();
+      toggleHomeItem(el.dataset.noteId, parseInt(el.dataset.item, 10));
+    });
+  });
+}
+
+function toggleHomeNote(noteId) {
+  homeNoteOpen[noteId] = homeNoteOpen[noteId] === false;
+  renderHomeNotes(homeNotesData);
+}
+
+function toggleHomeItem(noteId, ix) {
+  var note = homeNotesData.filter(function (n) { return n.id === noteId; })[0];
+  if (!note || !note.items || !note.items[ix]) return Promise.resolve(null);
+  var before = note.items[ix].done;
+  note.items[ix].done = !before;
+  renderHomeNotes(homeNotesData);
+  // 只让后台翻这一项——首页只带了前几项，整段回写会把后面的项冲掉
+  return api('/api/notes/toggle', { method: 'POST', body: { id: noteId, index: ix } })
+    .then(function (saved) {
+      var all = saved.items || [];
+      if (all[ix]) note.items[ix].done = all[ix].done;
+      note.itemsTotal = all.length;
+      note.itemsDone = all.filter(function (i) { return i.done; }).length;
+      note.moreItems = Math.max(0, note.itemsTotal - note.items.length);
+      note.summary = note.itemsDone + '/' + note.itemsTotal + ' 项完成';
+      renderHomeNotes(homeNotesData);
+      // 备忘录页那边如果已经有缓存，也顺手同步一下
+      var cached = (State.notes || []).filter(function (n) { return n.id === noteId; })[0];
+      if (cached) {
+        cached.items = all;
+        cached.updatedAt = saved.updatedAt;
+      }
+      return saved;
+    })
+    .catch(function () {
+      note.items[ix].done = before;
+      renderHomeNotes(homeNotesData);
+    });
 }
 
 /* ---------- 天气 ---------- */

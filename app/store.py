@@ -640,6 +640,27 @@ def delete_note(cid):
     return True
 
 
+def toggle_note_item(cid, index):
+    """只翻转某一条清单项，顺便避免整段回写把没显示出来的项冲掉。"""
+    try:
+        index = int(index)
+    except (TypeError, ValueError):
+        return None
+    notes = read('notes').get('notes', [])
+    for n in notes:
+        if n.get('id') != cid:
+            continue
+        items = n.get('items') or []
+        if index < 0 or index >= len(items):
+            return None
+        items[index]['done'] = not bool(items[index].get('done'))
+        n['items'] = items
+        n['updatedAt'] = datetime.now(CST).isoformat(timespec='seconds')
+        save_notes_obj(notes)
+        return n
+    return None
+
+
 # ---------- 天气缓存 ----------
 def get_weather_cache():
     return read('weather_cache')

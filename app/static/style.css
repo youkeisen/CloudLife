@@ -136,6 +136,29 @@ table.tt td.slot{width:92px;background:var(--soft);color:var(--muted);text-align
 .empty{text-align:center;color:var(--faint);font-size:13px;padding:24px 12px;line-height:1.9}
 .empty b{display:block;color:var(--text);font-weight:500;font-size:14px;margin-bottom:4px}
 .linkbtn{color:var(--accent);cursor:pointer;text-decoration:none}
+/* 首页备忘录速览：整条可点，清单项在标题下面，点一下就能勾 */
+.homeNote{padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.homeNote:last-child{border:none}
+.homeNoteTitle{display:flex;align-items:center;gap:6px}
+/* 收放用的小三角：默认朝下（展开），收起时转成朝右 */
+.caret{width:18px;height:18px;flex:none;display:flex;align-items:center;justify-content:center;
+  border-radius:5px;color:var(--faint);cursor:pointer}
+.caret:hover{background:var(--soft);color:var(--text)}
+.caret::before{content:'';width:6px;height:6px;border-right:1.5px solid currentColor;
+  border-bottom:1.5px solid currentColor;transform:rotate(45deg) translate(-1px,-1px)}
+.caret.closed::before{transform:rotate(-45deg) translate(-1px,-1px)}
+.homeNoteBody.closed{display:none}
+.homeBody{font-size:12px;color:var(--muted);margin-top:4px;white-space:pre-wrap;
+  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.homeTodo{margin-top:5px}
+.homeTodoItem{display:flex;align-items:center;gap:7px;padding:3px 4px;border-radius:6px;
+  font-size:12px;color:var(--muted)}
+.homeTodoItem:hover{background:var(--soft)}
+.homeTodoItem .bx{width:14px;height:14px;flex:none;border:1px solid var(--line);border-radius:4px;
+  display:flex;align-items:center;justify-content:center;font-size:10px;line-height:1;color:transparent}
+.homeTodoItem .bx.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.homeTodoItem .tx{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.homeTodoItem .tx.on{text-decoration:line-through;color:var(--faint)}
 /* 清单：每条一行 [勾选框] [内容] [×]，内容框占满剩下的宽度 */
 #todoList{margin-top:2px}
 .todoitem{display:flex;align-items:center;gap:8px;margin-bottom:6px}

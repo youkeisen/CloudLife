@@ -167,3 +167,52 @@ class ServerTestCase(unittest.TestCase):
         self.srv = TestServer()
         self.srv.start()
         self.addCleanup(self.srv.stop)
+
+
+# ---------- 前端产物的静态检查小工具 ----------
+def read_static(name):
+    return (STATIC_DIR / name).read_text(encoding='utf-8')
+
+
+def fn_body(js, name):
+    """取一个顶层函数的函数体（顶层函数的收尾 } 一定在行首）。"""
+    start = js.index('function ' + name)
+    end = js.index('\n}\n', start)
+    return js[start:end + 3]
+
+
+def css_rules():
+    """把 style.css 拆成 [(选择器, {声明})]；本文件里没有 @media，够用。"""
+    import re
+    text = re.sub(r'/\*.*?\*/', '', read_static('style.css'), flags=re.S)
+    rules = []
+    for selector, body in re.findall(r'([^{}]+)\{([^{}]*)\}', text):
+        decls = {}
+        for part in body.split(';'):
+            if ':' in part:
+                key, value = part.split(':', 1)
+                decls[key.strip().lower()] = value.strip()
+        rules.append((' '.join(selector.split()), decls))
+    return rules
+
+
+def decls_for(selector):
+    for sel, decls in css_rules():
+        if sel == selector:
+            return decls
+    raise AssertionError('style.css 里找不到规则：' + selector)
+
+
+def specificity(selector):
+    """选择器权重的粗略计数 (id, class, type)，够用来比较谁压得住谁。"""
+    import re
+    selector = re.sub(r'\[[^\]]*\]', ' [] ', selector)
+    ids = classes = types = 0
+    for token in re.findall(r'#[\w-]+|\.[\w-]+|\[\]|[a-zA-Z][\w-]*|::?[\w-]+', selector):
+        if token == '[]' or token.startswith('.') or token.startswith(':'):
+            classes += 1
+        elif token.startswith('#'):
+            ids += 1
+        else:
+            types += 1
+    return (ids, classes, types)

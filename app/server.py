@@ -386,6 +386,12 @@ def compute_lesson_states(lessons, periods, now_min):
     return enriched
 
 
+# 首页备忘录速览：最多几条、每条最多摊开几项清单、正文最多带多少字
+PREVIEW_NOTES = 3
+PREVIEW_ITEMS = 6
+PREVIEW_BODY = 200
+
+
 def api_home(h, ctx):
     s = store.get_settings()
     meta = today_meta()
@@ -401,16 +407,28 @@ def api_home(h, ctx):
     notes.sort(key=lambda n: n.get('updatedAt', ''), reverse=True)
     notes.sort(key=lambda n: not n.get('pinned'))
     preview = []
-    for n in notes[:3]:
-        if n.get('type') == 'todo':
-            total = len(n.get('items') or [])
-            done = len([i for i in (n.get('items') or []) if i.get('done')])
-            summary = '%d/%d 项完成' % (done, total)
-        else:
-            summary = (n.get('body') or '').split('\n')[0][:24]
-        preview.append({'id': n.get('id'), 'title': n.get('title') or '无标题',
-                        'type': n.get('type') or 'text',
-                        'tags': n.get('tags') or [], 'summary': summary, 'pinned': n.get('pinned')})
+    for n in notes[:PREVIEW_NOTES]:
+        raw_items = n.get('items') or []
+        total = len(raw_items)
+        done = len([i for i in raw_items if i.get('done')])
+        shown = raw_items[:PREVIEW_ITEMS]
+        preview.append({
+            'id': n.get('id'),
+            'title': n.get('title') or '无标题',
+            'type': n.get('type') or 'text',
+            'tags': n.get('tags') or [],
+            'summary': ('%d/%d 项完成' % (done, total)) if n.get('type') == 'todo'
+                       else (n.get('body') or '').split('\n')[0][:24],
+            'pinned': n.get('pinned'),
+            # 清单：把内容和勾选状态一起带上，首页直接看得见、也能勾
+            'items': [{'text': (i.get('text') or ''), 'done': bool(i.get('done'))} for i in shown],
+            'moreItems': max(0, total - len(shown)),
+            'itemsDone': done,
+            'itemsTotal': total,
+            # 正文：首页折叠区里显示，太长就截断
+            'body': (n.get('body') or '').strip()[:PREVIEW_BODY],
+            'bodyCut': len((n.get('body') or '').strip()) > PREVIEW_BODY,
+        })
 
     h._json(ok({
         'meta': meta,
@@ -513,6 +531,21 @@ def api_delete_note(h, ctx):
         h._json(fail('备忘录不存在', 'not_found'))
         return
     h._json(ok({'deleted': True}))
+
+
+def api_toggle_note_item(h, ctx):
+    """首页速览里直接勾选清单项用；只翻一项，不整段回写。"""
+    body = ctx['body'] or {}
+    nid = body.get('id')
+    if not nid:
+        raise ValueError('缺少备忘录 id')
+    if body.get('index') is None:
+        raise ValueError('缺少清单项序号')
+    note = store.toggle_note_item(nid, body.get('index'))
+    if note is None:
+        h._json(fail('备忘录或这一项不存在，可能已经被删掉了', 'not_found'))
+        return
+    h._json(ok(note))
 
 
 # ---------- 备份 / 还原 / 清空 ----------
@@ -791,6 +824,7 @@ ROUTES = {
     ('POST', '/api/notes'): api_add_note,
     ('PUT', '/api/notes'): api_update_note,
     ('DELETE', '/api/notes'): api_delete_note,
+    ('POST', '/api/notes/toggle'): api_toggle_note_item,
     ('GET', '/api/weather'): api_weather,
     ('GET', '/api/home'): api_home,
     ('GET', '/api/backup'): api_backup,

@@ -17,7 +17,7 @@ TOOLS_DIR = Path(__file__).resolve().parent
 TESTS_DIR = TOOLS_DIR / 'tests'
 sys.path.insert(0, str(TESTS_DIR))
 
-STAGES = list(range(0, 11))
+STAGES = list(range(0, 12))
 
 
 def load_stage(stage):

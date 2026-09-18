@@ -323,7 +323,7 @@ function renderPeriods() {
       api('/api/settings/period', {
         method: 'PUT',
         body: { id: id, label: label.value, start: start.value, end: end.value }
-      }).then(function () { render(); });
+      }).then(function () { reloadSettings(); });
     }, 400);
     label.addEventListener('input', push);
     start.addEventListener('input', push);
@@ -485,22 +485,15 @@ function renderSettings() {
           .then(function () { renderHome(); renderSettings(); });
       } }]);
   });
-  $('genPer').addEventListener('click', function () {
-    var n = 0;
-    var step = function () {
-      if (n >= 6) { renderPeriods(); return; }
-      n++;
-      api('/api/settings/period', { method: 'POST', body: { label: '第 ' + n + ' 段', start: '', end: '' } })
-        .then(function () { step(); });
-    };
-    step();
-  });
 }
 
 function addPeriod(label, start, end) {
   return api('/api/settings/period', {
     method: 'POST', body: { label: label || '', start: start || '', end: end || '' }
-  }).then(function () { renderPeriods(); });
+  }).then(function () {
+    // 必须先把最新设置拉回来，否则列表还是旧状态，界面上看不到新加的那条
+    return reloadSettings();
+  });
 }
 
 function refreshDerived() {
@@ -1188,5 +1181,5 @@ function renderSettingsPanelIfVisible() {
   if (document.getElementById('p-settings').classList.contains('on')) renderSettings();
 }
 
-bootStage0();
+/* 启动：只要这一处，任何多余调用都会让 boot() 执行不到 */
 boot();

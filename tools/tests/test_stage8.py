@@ -29,7 +29,7 @@ class TestFrontendAssets(unittest.TestCase):
         for page in ('home', 'courses', 'weather', 'notes', 'settings'):
             self.assertIn('id="p-%s"' % page, html)
         for elem in ('weekSel', 'addCourse', 'copyWeek', 'clearWeek', 'ttCard', 'perList',
-                     'addPer', 'genPer', 'btnBackup', 'btnRestore', 'restoreFile', 'btnReset',
+                     'addPer', 'btnBackup', 'btnRestore', 'restoreFile', 'btnReset',
                      'btnFolder', 'noteDetail', 'notelist', 'citySel', 'homelessons',
                      'homewx', 'homenotes', 'toast', 'mask'):
             self.assertIn('id="%s"' % elem, html, '页面缺少元素 ' + elem)

@@ -1019,10 +1019,12 @@ function renderNoteDetail() {
   var bodyHtml = n.type === 'todo'
     ? '<div class="field"><label>清单</label><div id="todoList">' + (n.items || []).map(function (i, ix) {
         return '<div class="todoitem" data-ix="' + ix + '">' +
-          '<input type="checkbox"' + (i.done ? ' checked' : '') + '>' +
-          '<input type="text" value="' + esc(i.text) + '">' +
+          '<input type="checkbox"' + (i.done ? ' checked' : '') + ' title="做完打个勾">' +
+          '<input type="text" value="' + esc(i.text) + '" placeholder="一件事一行，写在这里">' +
           '<button class="del" title="删这一行">×</button></div>';
-      }).join('') + '</div><button id="addTodo" style="margin-top:6px">+ 加一行</button></div>'
+      }).join('') + '</div>' +
+      '<div class="row" style="margin-top:6px"><button id="addTodo">+ 加一行</button>' +
+      '<span class="small faint">勾上就是做完，清单进度会同步到左边列表和首页</span></div></div>'
     : '<div class="field"><label>内容</label><textarea id="noteBody" rows="12">' + esc(n.body) + '</textarea></div>';
 
   box.innerHTML =

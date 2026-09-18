@@ -129,13 +129,18 @@ table.tt td.slot{width:92px;background:var(--soft);color:var(--muted);text-align
 .field{margin-bottom:11px}
 .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
 .field input,.field select,.field textarea{width:100%}
+/* 复选框不能跟着 .field input 一起变成 100% 宽，不然会把同一行的文字框挤成 0 宽 */
+.field input[type=checkbox]{width:16px;height:16px;padding:0;flex:none;accent-color:var(--accent)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .dlg .btns{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
 .empty{text-align:center;color:var(--faint);font-size:13px;padding:24px 12px;line-height:1.9}
 .empty b{display:block;color:var(--text);font-weight:500;font-size:14px;margin-bottom:4px}
 .linkbtn{color:var(--accent);cursor:pointer;text-decoration:none}
+/* 清单：每条一行 [勾选框] [内容] [×]，内容框占满剩下的宽度 */
+#todoList{margin-top:2px}
 .todoitem{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.todoitem input[type=text]{flex:1}
+.todoitem input[type=text]{flex:1;width:auto;min-width:0}
+.todoitem .del{flex:none;width:26px;height:26px;line-height:1}
 .toast{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);
   background:rgba(28,31,36,.92);color:#fff;padding:8px 16px;border-radius:20px;font-size:12px;
   opacity:0;transition:opacity .25s;pointer-events:none;z-index:30}

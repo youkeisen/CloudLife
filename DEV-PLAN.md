@@ -524,6 +524,32 @@ python tools/smoke_test.py net       # 冒烟 + 联网校验
 
 全量结果：235 个用例，失败 0，错误 0，跳过 0（含联网用例）。
 
+### 迭代 5（2026-09-19）：清单每条能看清、能打字
+
+问题（凯森反馈的截图）：清单里每条只剩一个小方块和一个 ×，内容框看不见也打不进字；
+并要求内容排在「清单」这两个字的下面。
+
+根因在 CSS：`.field input,.field select,.field textarea{width:100%}` 这条把勾选框和内容框
+都撑成 100% 宽，三个元素（勾选框 / 内容框 / 删除键）挤在一个 flex 行里抢宽度，
+内容框被压到 0 宽——所以看着「没法输入」。
+
+改动：
+
+1. `.field input[type=checkbox]` 写死 16×16、`flex:none`、`accent-color`，
+   不再吃 `width:100%`（选择器权重比 `.field input` 高，压得住）。
+2. `.todoitem input[type=text]` 显式 `width:auto` + `flex:1` + `min-width:0`，
+   吃掉剩下的宽度。
+3. `.todoitem .del` 固定 26×26 且 `flex:none`；`#todoList` 加一点上边距，
+   整块就老实待在「清单」标签下面，左对齐。
+4. 内容框加 placeholder（空行也有提示，不再看不出哪里能打字）。
+
+测试：新增阶段 14（11 个用例），把 style.css 当结构化文件解析，
+直接断言「复选框不是百分比宽」「内容框 width:auto + flex:1」「覆盖规则的选择器权重
+确实高于 `.field input`」以及标记顺序（`<label>清单</label>` 必须在 `#todoList` 之前）。
+`run_tests.py` 扩到 0-14。
+
+全量结果：246 个用例，失败 0，错误 0，跳过 0（含联网用例）。
+
 对计划的几处实际调整：
 
 1. 节次「拖动排序」改为「上移 / 下移」按钮（第一版够用，理由同计划里的预案）。

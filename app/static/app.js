@@ -856,6 +856,7 @@ var curNoteId = null;
 var noteGroup = 'all';
 var notesBound = false;
 var saveTimer = null;
+var noteDirty = false;
 
 function noteGroupsHtml() {
   var notes = State.notes || [];
@@ -906,15 +907,20 @@ function renderNotesList() {
   });
   var list = filteredNotes();
   $('notelist').innerHTML = list.length ? list.map(function (n) {
-    var summary = n.type === 'todo'
-      ? ((n.items || []).filter(function (i) { return i.done; }).length + '/' + (n.items || []).length + ' 项完成')
-      : (n.body || '').split('\n')[0].slice(0, 20);
     return '<div class="nrow' + (n.id === curNoteId ? ' on' : '') + '" data-id="' + esc(n.id) + '">' +
       '<div class="t">' + (n.pinned ? '★ ' : '') + esc(n.title || '无标题') + '</div>' +
-      '<div class="p">' + esc((n.tags || []).join('、') || '未分类') + ' · ' + esc(summary || '空') + '</div></div>';
+      '<div class="p">' + esc(noteSubLine(n)) + '</div></div>';
   }).join('') : '<div class="empty"><b>这里还没有东西</b>右上角「新建备忘录」开始写</div>';
   Array.prototype.forEach.call(document.querySelectorAll('#notelist .nrow'), function (el) {
-    el.addEventListener('click', function () { curNoteId = el.dataset.id; renderNotesList(); renderNoteDetail(); });
+    el.addEventListener('click', function () {
+      // 切走之前先把还没落盘的改动存了，否则刚敲完就点别的会丢
+      clearTimeout(saveTimer);
+      saveCurrentNote().then(function () {
+        curNoteId = el.dataset.id;
+        noteDirty = false;
+        renderNotesList();
+      });
+    });
   });
   if (!notesBound) {
     notesBound = true;
@@ -933,7 +939,52 @@ function currentNote() {
   return (State.notes || []).filter(function (n) { return n.id === curNoteId; })[0] || null;
 }
 
+function noteTypeText(n) {
+  return (n && n.type === 'todo') ? '清单' : '笔记';
+}
+
+function noteSummary(n) {
+  if (!n) return '';
+  if (n.type === 'todo') {
+    var items = n.items || [];
+    if (!items.length) return '';
+    return items.filter(function (i) { return i.done; }).length + '/' + items.length + ' 项完成';
+  }
+  return (n.body || '').split('\n')[0].slice(0, 20);
+}
+
+/* 列表第二行：类型 + 标签 + 摘要。没标签就不写「未分类」——
+   免得看着像「这条笔记没归到任何类别」，其实它的类别就是「笔记」。 */
+function noteSubLine(n) {
+  var bits = [noteTypeText(n)];
+  var tags = (n.tags || []).filter(Boolean);
+  if (tags.length) bits.push(tags.join('、'));
+  var summary = noteSummary(n);
+  if (summary) bits.push(summary);
+  return bits.join(' · ');
+}
+
+/* 只刷新列表里那一行，不重建右侧编辑区（否则输入框会掉焦点） */
+function refreshNoteRow(n) {
+  if (!n) return;
+  var el = document.querySelector('#notelist .nrow[data-id="' + n.id + '"]');
+  if (!el) return;
+  var title = el.querySelector('.t');
+  var sub = el.querySelector('.p');
+  if (title) title.textContent = (n.pinned ? '★ ' : '') + (n.title || '无标题');
+  if (sub) sub.textContent = noteSubLine(n);
+}
+
+function renderNoteStatus() {
+  var el = $('noteStatus');
+  if (!el) return;
+  el.textContent = noteDirty ? '有改动…' : '已保存';
+  el.className = 'small ' + (noteDirty ? '' : 'faint');
+}
+
 function scheduleNoteSave() {
+  noteDirty = true;
+  renderNoteStatus();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveCurrentNote, 500);
 }
@@ -948,6 +999,11 @@ function saveCurrentNote() {
   }).then(function (saved) {
     var idx = State.notes.findIndex(function (x) { return x.id === saved.id; });
     if (idx >= 0) State.notes[idx] = saved;
+    if (saved.id === curNoteId) {
+      noteDirty = false;
+      refreshNoteRow(saved);
+      renderNoteStatus();
+    }
     toast('已保存');
     return saved;
   });
@@ -977,6 +1033,8 @@ function renderNoteDetail() {
     '<option value="todo"' + (n.type === 'todo' ? ' selected' : '') + '>清单</option></select></div>' +
     bodyHtml +
     '<div class="row" style="margin-top:12px">' +
+    '<button class="primary" id="saveNote">保存</button>' +
+    '<span id="noteStatus" class="small faint" style="min-width:52px"></span>' +
     '<button id="togglePin">' + (n.pinned ? '取消置顶' : '置顶') + '</button>' +
     '<button id="toggleArch">' + (n.archived ? '还原' : '归档') + '</button>' +
     '<button class="danger" id="delNote">删除</button></div>';
@@ -1012,6 +1070,12 @@ function renderNoteDetail() {
       saveCurrentNote().then(function () { renderNotes(); });
     });
   }
+  $('saveNote').addEventListener('click', function () {
+    clearTimeout(saveTimer);
+    saveCurrentNote().then(function (saved) {
+      if (saved) refreshNoteRow(saved);
+    });
+  });
   $('togglePin').addEventListener('click', function () {
     n.pinned = !n.pinned; saveCurrentNote().then(function () { renderNotes(); });
   });
@@ -1028,6 +1092,7 @@ function renderNoteDetail() {
       } }
     ]);
   });
+  renderNoteStatus();
 }
 
 function createNote() {
@@ -1121,10 +1186,11 @@ function homeNotesHtml(list) {
     return '<div class="empty"><b>还没有备忘录</b>想到什么随手记一条</div>';
   }
   return list.map(function (n) {
+    var tags = (n.tags || []).filter(Boolean);
     return '<div class="between" style="padding:7px 0;border-bottom:1px solid var(--line);cursor:pointer" data-note="' +
       esc(n.id) + '"><div><div>' + (n.pinned ? '<span class="tag w">置顶</span> ' : '') +
       esc(n.title) + '</div><span class="small faint">' + esc(n.summary || '空') + '</span></div>' +
-      '<span class="tag g">' + esc((n.tags || []).join('、') || '未分类') + '</span></div>';
+      '<span class="tag g">' + esc(tags.length ? tags.join('、') : noteTypeText(n)) + '</span></div>';
   }).join('');
 }
 

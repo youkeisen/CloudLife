@@ -409,6 +409,7 @@ def api_home(h, ctx):
         else:
             summary = (n.get('body') or '').split('\n')[0][:24]
         preview.append({'id': n.get('id'), 'title': n.get('title') or '无标题',
+                        'type': n.get('type') or 'text',
                         'tags': n.get('tags') or [], 'summary': summary, 'pinned': n.get('pinned')})
 
     h._json(ok({

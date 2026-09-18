@@ -447,6 +447,45 @@ def api_cities(h, ctx):
         h._json(fail('城市搜索失败：' + str(exc), 'weather_error'))
 
 
+# ---------- 我的地点 ----------
+def _places_data():
+    settings = store.get_settings()
+    return {'places': store.list_places(),
+            'current': settings.get('weatherCity') or store.EMPTY_CITY,
+            'settings': settings}
+
+
+def api_list_places(h, ctx):
+    h._json(ok(_places_data()))
+
+
+def api_add_place(h, ctx):
+    result = store.add_place(ctx['body'] or {})
+    h._json(ok(result))
+
+
+def api_select_place(h, ctx):
+    pid = (ctx['body'] or {}).get('id')
+    if not pid:
+        raise ValueError('请选择要切换的地点')
+    result = store.select_place(pid)
+    if result is None:
+        h._json(fail('地点不存在，可能已经被删掉了', 'not_found'))
+        return
+    h._json(ok(result))
+
+
+def api_delete_place(h, ctx):
+    pid = (ctx['body'] or {}).get('id')
+    if not pid:
+        raise ValueError('请指明要删除的地点')
+    result = store.remove_place(pid)
+    if not result['deleted']:
+        h._json(fail('地点不存在，可能已经被删掉了', 'not_found'))
+        return
+    h._json(ok(result))
+
+
 # ---------- 备忘录 ----------
 def api_list_notes(h, ctx):
     include_archived = _q1(ctx['query'], 'archived') == '1'
@@ -631,6 +670,10 @@ ROUTES = {
     ('POST', '/api/open-folder'): api_open_folder,
     ('POST', '/api/reset-all'): api_reset_all,
     ('GET', '/api/cities'): api_cities,
+    ('GET', '/api/places'): api_list_places,
+    ('POST', '/api/places'): api_add_place,
+    ('POST', '/api/places/select'): api_select_place,
+    ('DELETE', '/api/places'): api_delete_place,
     ('GET', '/'): page_index,
     ('GET', '/index.html'): page_index,
     ('GET', '/app.js'): page_static,

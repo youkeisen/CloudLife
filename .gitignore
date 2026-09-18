@@ -8,8 +8,8 @@ __pycache__/
 *.py[cod]
 *.pyo
 
-# 临时文件
-_last_run.txt
+# 临时文件（下划线开头的都是排查用的临时产物，别提交）
+_*.txt
 *.tmp
 *.log
 

@@ -61,8 +61,28 @@ class TestWeatherUnit(unittest.TestCase):
         self.assertTrue(any('温差' in t for t in p['tips']), str(p['tips']))
 
     def test_tips_umbrella(self):
-        p = wx.normalize(fixtures.forecast(), self.city)
-        self.assertTrue(any('伞' in t for t in p['tips']), '第二天降水概率 80 应提示带伞：%s' % p['tips'])
+        # 用固定数据，避免结果随运行时刻变化（原来靠 hourly 的偶然取值才过）
+        p = wx.normalize(fixtures.forecast(daily={'precipitation_probability_max': [80]}), self.city)
+        self.assertTrue(any('伞' in t for t in p['tips']), '今天降水概率 80 应提示带伞：%s' % p['tips'])
+
+    def test_tips_umbrella_from_hourly(self):
+        # 整天概率不高、但最近几小时会下雨，同样要提醒
+        raw = fixtures.forecast()
+        raw['hourly']['precipitation_probability'] = [90] * len(raw['hourly']['time'])
+        raw['daily']['precipitation_probability_max'] = [0] * 7
+        p = wx.normalize(raw, self.city)
+        self.assertTrue(any('伞' in t for t in p['tips']), '未来几小时要下雨应提示带伞：%s' % p['tips'])
+
+    def test_tips_empty_when_nothing_to_warn(self):
+        # 不该无中生有：温和天气不给提示
+        raw = fixtures.forecast()
+        raw['daily']['temperature_2m_max'] = [26.0] * 7
+        raw['daily']['temperature_2m_min'] = [22.0] * 7
+        raw['daily']['precipitation_probability_max'] = [0] * 7
+        raw['daily']['uv_index_max'] = [2.0] * 7
+        raw['hourly']['precipitation_probability'] = [0] * len(raw['hourly']['time'])
+        p = wx.normalize(raw, self.city)
+        self.assertEqual(p['tips'], [], '温和天气不该硬凑提示：%s' % p['tips'])
 
     def test_tips_uv(self):
         p = wx.normalize(fixtures.forecast(daily={'uv_index_max': [7.0]}), self.city)

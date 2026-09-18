@@ -102,8 +102,18 @@
         <div class="card">
           <div class="set">
             <h4>天气</h4>
-            <div class="line"><div>城市<div class="desc">未设置时天气页会先让你选</div></div>
-              <select id="s_city" style="width:150px"></select></div>
+            <div class="line"><div>我的地点<div class="desc">选中即切换，下面可以添加</div></div>
+              <div class="row"><select id="s_city" style="width:150px"></select>
+                <button id="s_cityToggle">＋ 添加地点</button></div></div>
+            <div class="line" id="s_placeAddBox" style="display:none">
+              <div>添加地点<div class="desc">搜到后点结果即可加入</div></div>
+              <div style="flex:1;min-width:220px">
+                <div class="row"><input id="s_cityQ" placeholder="输入城市名" style="width:150px">
+                  <button id="s_citySearchBtn">搜索</button></div>
+                <div id="s_cityResults" style="margin-top:6px"></div>
+              </div></div>
+            <div class="line"><div>已保存<div class="desc">点 × 移除</div></div>
+              <div id="s_placeList" class="row" style="flex-wrap:wrap;max-width:260px"></div></div>
             <div class="line"><div>纬度 / 经度<div class="desc">也可直接手填坐标</div></div>
               <div class="row"><input id="s_lat" style="width:88px" placeholder="纬度"><input id="s_lon" style="width:88px" placeholder="经度"><button id="s_lonSave">保存</button></div></div>
             <div class="line"><div>自动刷新</div>

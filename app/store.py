@@ -20,9 +20,13 @@ DEFAULT_SETTINGS = {
     'campus': '',
     'periods': [],
     'weatherCity': {'name': '', 'latitude': None, 'longitude': None, 'timezone': 'Asia/Shanghai'},
+    'weatherCities': [],
     'refreshMinutes': 30,
     'theme': 'system',
 }
+
+EMPTY_CITY = {'name': '', 'latitude': None, 'longitude': None, 'timezone': 'Asia/Shanghai'}
+MAX_PLACES = 20
 
 DEFAULT_COURSES = {'version': SCHEMA_VERSION, 'weeks': {}}
 DEFAULT_NOTES = {'version': SCHEMA_VERSION, 'notes': []}
@@ -248,6 +252,149 @@ def delete_period(pid, mode='cancel'):
     settings['periods'] = rest
     write('settings', settings)
     return {'used': used, 'deleted': True}
+
+
+# ---------- 我的地点 ----------
+def _coord(value, low, high):
+    """把坐标收成合法数字；不合法返回 None。"""
+    if isinstance(value, bool) or value is None or value == '':
+        return None
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    if num != num or num in (float('inf'), float('-inf')):
+        return None
+    if num < low or num > high:
+        return None
+    return round(num, 4)
+
+
+def normalize_place(data):
+    """把入参整理成标准地点；不合法就抛 ValueError。"""
+    data = data or {}
+    name = str(data.get('name') or '').strip()
+    if not name:
+        raise ValueError('地点名称不能为空')
+    lat = _coord(data.get('latitude'), -90.0, 90.0)
+    lon = _coord(data.get('longitude'), -180.0, 180.0)
+    if lat is None or lon is None:
+        raise ValueError('经纬度不合法，纬度 -90~90、经度 -180~180')
+    return {
+        'id': str(data.get('id') or ''),
+        'name': name,
+        'admin': str(data.get('admin') or '').strip(),
+        'latitude': lat,
+        'longitude': lon,
+        'timezone': str(data.get('timezone') or 'Asia/Shanghai'),
+    }
+
+
+def list_places():
+    """已保存的地点列表；坏条目直接跳过，不让它拖垮页面。"""
+    places = []
+    for raw in get_settings().get('weatherCities') or []:
+        try:
+            places.append(normalize_place(raw))
+        except ValueError:
+            continue
+    return places
+
+
+def _same_place(a, b):
+    return (abs(a['latitude'] - b['latitude']) < 1e-4 and
+            abs(a['longitude'] - b['longitude']) < 1e-4)
+
+
+def _is_current(current, place):
+    if not current or not current.get('name'):
+        return False
+    if current.get('name') != place['name']:
+        return False
+    try:
+        return (abs(float(current.get('latitude')) - place['latitude']) < 1e-4 and
+                abs(float(current.get('longitude')) - place['longitude']) < 1e-4)
+    except (TypeError, ValueError):
+        return False
+
+
+def _as_current(place):
+    return {'name': place['name'], 'latitude': place['latitude'],
+            'longitude': place['longitude'], 'timezone': place['timezone']}
+
+
+def _save_places(places, current):
+    settings = get_settings()
+    settings['weatherCities'] = places
+    settings['weatherCity'] = current
+    write('settings', settings)
+    return settings
+
+
+def add_place(data):
+    """添加地点并设为当前；坐标相同的视为同一个地点，只改名不重复添加。"""
+    incoming = normalize_place(data)
+    places = list_places()
+    created = True
+    target = None
+    for p in places:
+        if _same_place(p, incoming):
+            created = False
+            target = p
+            p['name'] = incoming['name']
+            if incoming['admin']:
+                p['admin'] = incoming['admin']
+            break
+    if target is None:
+        if len(places) >= MAX_PLACES:
+            raise ValueError('最多保存 %d 个地点，先删掉几个再加' % MAX_PLACES)
+        target = dict(incoming)
+        target['id'] = new_id('pl')
+        places.append(target)
+    current = _as_current(target)
+    settings = _save_places(places, current)
+    return {'place': target, 'created': created, 'places': places,
+            'current': current, 'settings': settings}
+
+
+def find_place(pid):
+    for p in list_places():
+        if p['id'] == pid:
+            return p
+    return None
+
+
+def select_place(pid):
+    """把某个已保存地点设为当前城市。"""
+    place = find_place(pid)
+    if place is None:
+        return None
+    places = list_places()
+    current = _as_current(place)
+    settings = _save_places(places, current)
+    return {'place': place, 'places': places, 'current': current, 'settings': settings}
+
+
+def remove_place(pid):
+    """删除已保存地点；删掉当前城市就顺位到第一个，没有剩余就清空当前城市。"""
+    places = list_places()
+    removed = None
+    rest = []
+    for p in places:
+        if p['id'] == pid and removed is None:
+            removed = p
+            continue
+        rest.append(p)
+    if removed is None:
+        return {'deleted': False, 'places': places,
+                'current': get_settings().get('weatherCity') or EMPTY_CITY}
+    settings = get_settings()
+    current = settings.get('weatherCity') or EMPTY_CITY
+    if _is_current(current, removed):
+        current = _as_current(rest[0]) if rest else dict(EMPTY_CITY)
+    settings = _save_places(rest, current)
+    return {'deleted': True, 'place': removed, 'places': rest,
+            'current': current, 'settings': settings}
 
 
 # ---------- 课程 ----------

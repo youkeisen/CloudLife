@@ -155,6 +155,143 @@ function saveSettings(patch) {
   });
 }
 
+/* ---------- 我的地点 ---------- */
+var placesBound = false;
+var placeResults = [];
+
+function places() {
+  return (State.settings && State.settings.weatherCities) || [];
+}
+
+function placeLabel(p) {
+  return p.name + (p.admin ? ' · ' + p.admin : '');
+}
+
+function placeIsCurrent(p) {
+  var cur = currentCity();
+  if (!cur.name || cur.name !== p.name) return false;
+  return Math.abs((cur.latitude || 0) - p.latitude) < 1e-4 &&
+    Math.abs((cur.longitude || 0) - p.longitude) < 1e-4;
+}
+
+function applyPlacesData(d) {
+  if (d && d.settings) State.settings = d.settings;
+  renderPlaces();
+  return d;
+}
+
+function renderPlaces() {
+  var sel = $('s_city');
+  if (!sel) return;
+  var list = places();
+  var currentId = '';
+  var opts = ['<option value="">' + (currentCity().name ? '当前：' + esc(currentCity().name) : '未选择地点') + '</option>'];
+  opts = opts.concat(list.map(function (p) {
+    if (placeIsCurrent(p)) currentId = p.id;
+    return '<option value="' + esc(p.id) + '">' + esc(placeLabel(p)) + '</option>';
+  }));
+  sel.innerHTML = opts.join('');
+  sel.value = currentId;
+
+  var cur = currentCity();
+  if ($('s_lat')) $('s_lat').value = cur.latitude != null ? cur.latitude : '';
+  if ($('s_lon')) $('s_lon').value = cur.longitude != null ? cur.longitude : '';
+
+  var box = $('s_placeList');
+  if (box) {
+    if (!list.length) {
+      box.innerHTML = '<span class="small faint">还没有地点，点上面的「＋ 添加地点」</span>';
+    } else {
+      box.innerHTML = list.map(function (p) {
+        return '<div class="between" style="width:100%;padding:3px 0;border-bottom:1px dashed var(--line)">' +
+          '<span class="small">' + esc(placeLabel(p)) +
+          (placeIsCurrent(p) ? ' <span class="tag">当前</span>' : '') + '</span>' +
+          '<button class="del" data-place="' + esc(p.id) + '" title="移除">×</button></div>';
+      }).join('');
+    }
+  }
+}
+
+function renderCityResults(msg) {
+  var box = $('s_cityResults');
+  if (!box) return;
+  if (!placeResults.length) {
+    box.innerHTML = msg ? '<div class="small faint">' + esc(msg) + '</div>' : '';
+    return;
+  }
+  box.innerHTML = placeResults.map(function (c, i) {
+    return '<button class="ghost" data-city="' + i + '" style="margin:0 6px 6px 0">' +
+      esc(c.name) + (c.admin ? ' · ' + esc(c.admin) : '') + '</button>';
+  }).join('') + '<div class="small faint">点一个加进「我的地点」</div>';
+}
+
+function addPlace(c) {
+  return api('/api/places', {
+    method: 'POST',
+    body: { name: c.name, admin: c.admin || '', latitude: c.latitude, longitude: c.longitude }
+  }).then(function (d) {
+    applyPlacesData(d);
+    placeResults = [];
+    renderCityResults();
+    if ($('s_placeAddBox')) $('s_placeAddBox').style.display = 'none';
+    if ($('s_cityQ')) $('s_cityQ').value = '';
+    toast(d.created ? ('已添加 ' + d.place.name) : ('已切换到 ' + d.place.name));
+    if (typeof loadWeather === 'function') loadWeather(true);
+    return d;
+  });
+}
+
+function doPlaceSearch() {
+  var q = $('s_cityQ').value.trim();
+  if (!q) { toast('先输入城市名'); return; }
+  api('/api/cities?q=' + encodeURIComponent(q)).then(function (d) {
+    placeResults = d.cities || [];
+    renderCityResults(placeResults.length ? '' : '没搜到，换个词或直接手填坐标');
+  }).catch(function () {
+    placeResults = [];
+    renderCityResults('搜索失败，检查网络或直接手填坐标');
+  });
+}
+
+function bindPlaces() {
+  if (placesBound) return;
+  placesBound = true;
+  $('s_cityToggle').addEventListener('click', function () {
+    var box = $('s_placeAddBox');
+    var open = box.style.display !== 'none';
+    box.style.display = open ? 'none' : 'flex';
+    if (!open) $('s_cityQ').focus();
+  });
+  $('s_city').addEventListener('change', function () {
+    var id = this.value;
+    if (!id) return;
+    api('/api/places/select', { method: 'POST', body: { id: id } }).then(function (d) {
+      applyPlacesData(d);
+      toast('已切换到 ' + d.place.name);
+      if (typeof loadWeather === 'function') loadWeather(true);
+    });
+  });
+  $('s_citySearchBtn').addEventListener('click', doPlaceSearch);
+  $('s_cityQ').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') doPlaceSearch();
+  });
+  $('s_cityResults').addEventListener('click', function (e) {
+    var idx = e.target.getAttribute && e.target.getAttribute('data-city');
+    if (idx === null || idx === undefined) return;
+    var c = placeResults[parseInt(idx, 10)];
+    if (c) addPlace(c);
+  });
+  $('s_placeList').addEventListener('click', function (e) {
+    var id = e.target.getAttribute && e.target.getAttribute('data-place');
+    if (!id) return;
+    api('/api/places', { method: 'DELETE', body: { id: id } }).then(function (d) {
+      applyPlacesData(d);
+      toast('已移除');
+      if (typeof loadWeather === 'function') loadWeather(true);
+    });
+  });
+}
+
 function periodRowHtml(p, idx, total) {
   return '<div class="prow" data-id="' + esc(p.id) + '">' +
     '<input class="p_label" value="' + esc(p.label) + '" placeholder="名称，如 第 1-2 节">' +
@@ -251,9 +388,11 @@ function renderSettings() {
   $('s_lat').value = s.weatherCity && s.weatherCity.latitude != null ? s.weatherCity.latitude : '';
   $('s_lon').value = s.weatherCity && s.weatherCity.longitude != null ? s.weatherCity.longitude : '';
   renderPeriods();
+  renderPlaces();
   if (typeof renderCityOptions === 'function') renderCityOptions();
   if (settingsBound) return;
   settingsBound = true;
+  bindPlaces();
 
   var text = function (el, key, cast) {
     el.addEventListener('change', function () {
@@ -278,8 +417,7 @@ function renderSettings() {
     var lat = parseFloat($('s_lat').value);
     var lon = parseFloat($('s_lon').value);
     if (isNaN(lat) || isNaN(lon)) { toast('请填写正确的经纬度'); return; }
-    saveSettings({ weatherCity: { name: '自定义位置', latitude: lat, longitude: lon, timezone: 'Asia/Shanghai' } })
-      .then(function () { toast('已保存坐标'); if (typeof loadWeather === 'function') loadWeather(true); });
+    addPlace({ name: '自定义坐标', latitude: lat, longitude: lon });
   });
   $('addPer').addEventListener('click', function () { addPeriod(); });
   $('btnFolder').addEventListener('click', function () {
@@ -934,12 +1072,15 @@ function bindWeather() {
     if (v === '') return;
     var c = citiesCache[parseInt(v, 10)];
     if (!c) return;
-    saveSettings({ weatherCity: { name: c.name, latitude: c.latitude, longitude: c.longitude, timezone: 'Asia/Shanghai' } })
-      .then(function () {
-        currentCityValue = c;
-        renderCityOptions();
-        return loadWeather(true);
-      }).then(function () { toast('已切换到 ' + c.name); });
+    api('/api/places', {
+      method: 'POST',
+      body: { name: c.name, admin: c.admin || '', latitude: c.latitude, longitude: c.longitude }
+    }).then(function (d) {
+      currentCityValue = c;
+      applyPlacesData(d);
+      renderCityOptions();
+      return loadWeather(true);
+    }).then(function () { toast('已切换到 ' + c.name); });
   });
   $('citySearchBtn').addEventListener('click', doCitySearch);
   $('citySearch').addEventListener('keydown', function (e) {

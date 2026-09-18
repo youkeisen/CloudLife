@@ -67,6 +67,17 @@ def main(argv):
         ok_all &= check('未选城市时首页给出引导',
                         srv.ok('/api/home')['weather']['state'] == 'no_city')
 
+        pl = srv.ok('/api/places', 'POST', {'name': '冒烟城', 'latitude': 31.0,
+                                            'longitude': 118.0, 'admin': '冒烟省'})
+        ok_all &= check('能添加地点并直接设为当前', pl['current']['name'] == '冒烟城')
+        ok_all &= check('地点进了「我的地点」列表',
+                        [p['name'] for p in srv.ok('/api/places')['places']] == ['冒烟城'])
+        ok_all &= check('加了地点后首页不再提示未选城市',
+                        srv.ok('/api/home')['weather']['state'] != 'no_city')
+        srv.ok('/api/places', 'DELETE', {'id': pl['place']['id']})
+        ok_all &= check('移除地点后当前城市清空',
+                        srv.ok('/api/places')['current']['name'] == '')
+
         if net:
             srv.ok('/api/settings', 'PUT', {'weatherCity': {'name': '合肥', 'latitude': 31.86,
                                                             'longitude': 117.28,

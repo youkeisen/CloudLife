@@ -172,8 +172,36 @@ void main() {
   });
 
   group('节次', () {
+    /// v1.3.5 起「作息与节次」卡片默认收起，先点标题展开再操作
+    Future<void> openPeriods(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('s-periods-toggle')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('卡片默认收起，点标题展开、再点收起', (tester) async {
+      final s = store.settings()
+        ..periods = <Period>[
+          Period(id: 'p1', label: '第 1 节', start: '08:10', end: '08:55'),
+        ];
+      store.saveSettings(s);
+      await pumpPage(tester);
+
+      // 收起状态：看不到节次行和添加按钮，但有摘要
+      expect(find.byKey(const ValueKey('s-add-period')), findsNothing);
+      expect(find.text('1 个节次'), findsOneWidget);
+
+      await openPeriods(tester);
+      expect(find.byKey(const ValueKey('s-add-period')), findsOneWidget);
+      expect(find.text('08:10'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('s-periods-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('s-add-period')), findsNothing);
+    });
+
     testWidgets('空列表有引导，点添加加一条', (tester) async {
       await pumpPage(tester);
+      await openPeriods(tester);
       expect(find.byKey(const ValueKey('s-periods-empty')), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('s-add-period')));
@@ -187,6 +215,7 @@ void main() {
 
     testWidgets('连点三次加三条，id 不重复', (tester) async {
       await pumpPage(tester);
+      await openPeriods(tester);
       for (var i = 0; i < 3; i++) {
         await tester.tap(find.byKey(const ValueKey('s-add-period')));
         await tester.pumpAndSettle();
@@ -206,6 +235,7 @@ void main() {
         tester,
         pickTime: (TimeOfDay initial) async => answers.removeAt(0),
       );
+      await openPeriods(tester);
       await tester.tap(find.byKey(const ValueKey('s-add-period')));
       await tester.pumpAndSettle();
       final pid = periodAt(0).id;
@@ -230,6 +260,7 @@ void main() {
         ];
       store.saveSettings(s);
       await pumpPage(tester); // 不注入 pickTime → 走真实的两列滚轮对话框
+      await openPeriods(tester);
 
       // 手输时代的乱值 ( / ) 要被清掉，显示占位提示
       expect(find.text('('), findsNothing);
@@ -252,6 +283,7 @@ void main() {
         ];
       store.saveSettings(s);
       await pumpPage(tester);
+      await openPeriods(tester);
 
       await tester.tap(find.byKey(const ValueKey('s-period-del-p2')));
       await tester.pumpAndSettle();

@@ -537,7 +537,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 onChanged: (int? v) => v == null ? null : _save((s) => s.refreshMinutes = v),
               )),
         ]),
-        _card(context, '作息与节次（全部自定义）', <Widget>[
+        _cardCollapsible(
+          context,
+          key: const ValueKey('s-periods-card'),
+          title: '作息与节次（全部自定义）',
+          open: _periodsOpen,
+          onToggle: () => setState(() => _periodsOpen = !_periodsOpen),
+          summary: _s.periods.isEmpty ? '还没设' : '${_s.periods.length} 个节次',
+          children: <Widget>[
           if (_s.periods.isEmpty)
             Text('还没有节次，先添加几条吧',
                 key: const ValueKey('s-periods-empty'),
@@ -620,6 +627,63 @@ class _SettingsPageState extends State<SettingsPage> {
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
           ...children,
+        ],
+      ),
+    );
+  }
+
+  /// 作息与节次卡片默认收起（列表长），点标题 + 小三角展开。
+  bool _periodsOpen = false;
+
+  Widget _cardCollapsible(
+    BuildContext context, {
+    Key? key,
+    required String title,
+    required bool open,
+    required VoidCallback onToggle,
+    String? summary,
+    required List<Widget> children,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      key: key,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          InkWell(
+            key: const ValueKey('s-periods-toggle'),
+            borderRadius: BorderRadius.circular(8),
+            onTap: onToggle,
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(title,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                ),
+                if (!open && summary != null)
+                  Text(summary,
+                      style: TextStyle(fontSize: 12, color: cs.outline)),
+                const SizedBox(width: 6),
+                // 收起时朝下、展开时朝上（和首页速览的小三角一个意思）
+                AnimatedRotation(
+                  turns: open ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  child: Icon(Icons.expand_more,
+                      size: 20, color: cs.outline),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (open) ...children,
         ],
       ),
     );

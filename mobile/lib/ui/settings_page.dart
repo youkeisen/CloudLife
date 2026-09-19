@@ -398,7 +398,12 @@ class _SettingsPageState extends State<SettingsPage> {
       // 底部留 110：悬浮底栏是盖在内容上的，不留会被挡住（凯森 v1.3.5 反馈）
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 110),
       children: <Widget>[
-        _card(context, '基本', <Widget>[
+        _cardCollapsible(context, '基本',
+            key: const ValueKey('s-basic-card'),
+            toggleKey: 's-basic-toggle',
+            open: _basicOpen,
+            onToggle: () => setState(() => _basicOpen = !_basicOpen),
+            children: <Widget>[
           _field('第 1 周周一日期', '必填，用来算今天是第几教学周',
               InkWell(
                 key: const ValueKey('s-week1'),
@@ -434,7 +439,13 @@ class _SettingsPageState extends State<SettingsPage> {
                 onChanged: (String? v) => v == null ? null : _save((s) => s.theme = v),
               )),
         ]),
-        _card(context, '天气', <Widget>[
+        _cardCollapsible(context, '天气',
+            key: const ValueKey('s-weather-card'),
+            toggleKey: 's-weather-toggle',
+            open: _weatherOpen,
+            onToggle: () => setState(() => _weatherOpen = !_weatherOpen),
+            summary: _s.weatherCities.isEmpty ? '还没设' : '${_s.weatherCities.length} 个地点',
+            children: <Widget>[
           _rowTitle('我的地点', '选中即切换，右侧 × 移除'),
           if (_s.weatherCities.isEmpty)
             Text('还没有保存的地点',
@@ -526,11 +537,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 onChanged: (int? v) => v == null ? null : _save((s) => s.refreshMinutes = v),
               )),
         ]),
-        _cardCollapsible(
-          context,
-          key: const ValueKey('s-periods-card'),
-          title: '作息与节次（全部自定义）',
-          open: _periodsOpen,
+        _cardCollapsible(context, '作息与节次（全部自定义）',
+            key: const ValueKey('s-periods-card'),
+            toggleKey: 's-periods-toggle',
+            open: _periodsOpen,
           onToggle: () => setState(() => _periodsOpen = !_periodsOpen),
           summary: _s.periods.isEmpty ? '还没设' : '${_s.periods.length} 个节次',
           children: <Widget>[
@@ -563,7 +573,12 @@ class _SettingsPageState extends State<SettingsPage> {
           Text('点一下加一条，名称和起止时间随便填，支持中午时段、晚课、实训',
               style: TextStyle(fontSize: 12, color: cs.outline)),
         ]),
-        _card(context, '数据', <Widget>[
+        _cardCollapsible(context, '数据',
+            key: const ValueKey('s-data-card'),
+            toggleKey: 's-data-toggle',
+            open: _dataOpen,
+            onToggle: () => setState(() => _dataOpen = !_dataOpen),
+            children: <Widget>[
           _dataLine(
             '手动备份',
             '导出 zip，同时在本机留一份',
@@ -599,35 +614,18 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _card(BuildContext context, String title, List<Widget> children) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(title,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 10),
-          ...children,
-        ],
-      ),
-    );
-  }
-
   /// 作息与节次卡片默认收起（列表长），点标题 + 小三角展开。
   bool _periodsOpen = false;
+  // 其余三张卡默认展开，需要时点标题收起
+  bool _basicOpen = true;
+  bool _weatherOpen = true;
+  bool _dataOpen = true;
 
   Widget _cardCollapsible(
-    BuildContext context, {
+    BuildContext context,
+    String title, {
     Key? key,
-    required String title,
+    required String toggleKey,
     required bool open,
     required VoidCallback onToggle,
     String? summary,
@@ -647,7 +645,7 @@ class _SettingsPageState extends State<SettingsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           InkWell(
-            key: const ValueKey('s-periods-toggle'),
+            key: ValueKey(toggleKey),
             borderRadius: BorderRadius.circular(8),
             onTap: onToggle,
             child: Row(

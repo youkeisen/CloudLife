@@ -102,6 +102,20 @@ void main() {
     expect(find.byKey(const ValueKey('s-campus')), findsNothing);
   });
 
+  testWidgets('基本卡片默认展开，点标题收起再展开（v1.3.7）', (tester) async {
+    await pumpPage(tester);
+    // 默认展开：能看到第 1 周周一日期
+    expect(find.text('第 1 周周一日期'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('s-basic-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('第 1 周周一日期'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('s-basic-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('第 1 周周一日期'), findsOneWidget);
+  });
+
   testWidgets('选第 1 周周一日期：日期选择器 → 落盘', (tester) async {
     await pumpPage(tester);
     await tester.tap(find.byKey(const ValueKey('s-week1')));

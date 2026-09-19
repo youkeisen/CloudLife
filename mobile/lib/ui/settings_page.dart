@@ -749,6 +749,11 @@ class _PeriodRowState extends State<_PeriodRow> {
   @override
   void initState() {
     super.initState();
+    // 旧数据里可能有手输时代的乱值（不是「时:分」格式），直接清掉显示占位提示，
+    // 免得看起来像设好了时间其实没存对。先赋值再挂监听，避免清值触发落盘。
+    _label.text = widget.period.label;
+    _start.text = _cleanTime(widget.period.start);
+    _end.text = _cleanTime(widget.period.end);
     void bind(TextEditingController c) {
       c.addListener(() {
         widget.onChanged(Period(
@@ -766,6 +771,10 @@ class _PeriodRowState extends State<_PeriodRow> {
     bind(_end);
   }
 
+  /// 只认「时:分」格式，其它（手输时代的乱值）一律清空。
+  static String _cleanTime(String v) =>
+      RegExp(r'^\d{1,2}:\d{2}$').hasMatch(v.trim()) ? v.trim() : '';
+
   @override
   void dispose() {
     _label.dispose();
@@ -780,6 +789,7 @@ class _PeriodRowState extends State<_PeriodRow> {
     var minute = initial.minute.clamp(0, 59);
     return showDialog<TimeOfDay>(
       context: context,
+      barrierDismissible: false, // 防止误点外面关掉导致白选
       builder: (ctx) => AlertDialog(
         title: const Text('选择时间'),
         content: SizedBox(

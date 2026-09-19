@@ -223,6 +223,27 @@ void main() {
       expect(p.end, '08:50');
     });
 
+    testWidgets('滚轮时间选择：确定后时间回填到输入框（真实对话框，不走注入）', (tester) async {
+      final s = store.settings()
+        ..periods = <Period>[
+          Period(id: 'p1', label: '第 1 节', start: '(', end: ')'),
+        ];
+      store.saveSettings(s);
+      await pumpPage(tester); // 不注入 pickTime → 走真实的两列滚轮对话框
+
+      // 手输时代的乱值 ( / ) 要被清掉，显示占位提示
+      expect(find.text('('), findsNothing);
+      expect(find.text(')'), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('s-period-start-p1')));
+      await tester.pumpAndSettle();
+      // 对话框打开（默认 08:00），直接点确定
+      await tester.tap(find.byKey(const ValueKey('wheel-ok')));
+      await tester.pumpAndSettle();
+      expect(find.text('08:00'), findsOneWidget, reason: '确定后时间要回填到输入框');
+      expect(periodAt(0).start, '08:00', reason: '选择结果要落盘');
+    });
+
     testWidgets('删除节次落盘', (tester) async {
       final s = store.settings()
         ..periods = <Period>[

@@ -26,7 +26,7 @@ ROOT_DIR = os.path.dirname(APP_DIR)
 sys.path.insert(0, APP_DIR)
 import store  # noqa: E402
 
-APP_VERSION = '1.1.1'
+APP_VERSION = '1.2.0'
 CST = timezone(timedelta(hours=8))
 
 
@@ -483,6 +483,29 @@ def api_add_place(h, ctx):
     h._json(ok(result))
 
 
+def api_locate_place(h, ctx):
+    """用浏览器给的坐标反查城市名，直接加进「我的地点」。"""
+    import weather
+    body = ctx['body'] or {}
+    try:
+        lat = float(body.get('latitude'))
+        lon = float(body.get('longitude'))
+    except (TypeError, ValueError):
+        raise ValueError('没有拿到有效的定位坐标')
+    try:
+        city = weather.reverse_geocode(lat, lon)
+    except weather.WeatherError as exc:
+        h._json(fail('定位失败：%s' % exc, 'locate_failed'))
+        return
+    result = store.add_place({
+        'name': city['name'],
+        'admin': city.get('admin') or '',
+        'latitude': lat,
+        'longitude': lon,
+    })
+    h._json(ok(result))
+
+
 def api_select_place(h, ctx):
     pid = (ctx['body'] or {}).get('id')
     if not pid:
@@ -685,9 +708,18 @@ def _upload_bytes(body):
     return raw
 
 
+def _parse_timetable(raw):
+    """按文件魔数分流：PDF 走 timetable_pdf，其它（xlsx）走 timetable。"""
+    import timetable as tt
+    import timetable_pdf
+    if timetable_pdf.looks_like_pdf(raw):
+        return timetable_pdf.parse_pdf_timetable(raw)
+    return tt.parse_timetable(raw)
+
+
 def _import_plan(raw):
     import timetable as tt
-    parsed = tt.parse_timetable(raw)
+    parsed = _parse_timetable(raw)
     labels = [tt.period_label_text(l) for l in tt.period_labels(parsed)]
     existing = {str(p.get('label') or '').strip() for p in store.periods()}
     courses = []
@@ -834,6 +866,7 @@ ROUTES = {
     ('GET', '/api/cities'): api_cities,
     ('GET', '/api/places'): api_list_places,
     ('POST', '/api/places'): api_add_place,
+    ('POST', '/api/places/locate'): api_locate_place,
     ('POST', '/api/places/select'): api_select_place,
     ('DELETE', '/api/places'): api_delete_place,
     ('GET', '/'): page_index,

@@ -292,6 +292,29 @@ function bindPlaces() {
       if (typeof loadWeather === 'function') loadWeather(true);
     });
   });
+  // 定位添加地点：浏览器拿坐标，服务端反查城市名后加入
+  var locBtn = $('s_cityLocate');
+  if (locBtn) {
+    locBtn.addEventListener('click', function () {
+      if (!navigator.geolocation) {
+        toast('这个浏览器不支持定位，用搜索添加吧');
+        return;
+      }
+      toast('正在定位…');
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        api('/api/places/locate', {
+          method: 'POST',
+          body: { latitude: pos.coords.latitude, longitude: pos.coords.longitude }
+        }).then(function (d) {
+          applyPlacesData(d);
+          toast('已定位添加');
+          if (typeof loadWeather === 'function') loadWeather(true);
+        });
+      }, function (err) {
+        toast(err && err.code === 1 ? '没给定位权限，用搜索添加吧' : '定位失败，用搜索添加吧');
+      }, { timeout: 15000, maximumAge: 600000 });
+    });
+  }
 }
 
 function periodRowHtml(p, idx, total) {
@@ -748,7 +771,7 @@ var importPayload = null;
 function pickTimetableFile() {
   var input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.xlsx';
+  input.accept = '.xlsx,.pdf';
   input.style.display = 'none';
   input.addEventListener('change', function () {
     var f = input.files && input.files[0];

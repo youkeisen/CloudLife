@@ -156,6 +156,38 @@ def search_cities(name, timeout=TIMEOUT):
 
 
 
+def reverse_geocode(latitude, longitude, timeout=TIMEOUT):
+    """用坐标反查地名（Nominatim 免费服务，给「定位添加地点」用）。
+
+    返回 {'name': 城市名, 'admin': 省/州}；拿不到像样的名字就抛 WeatherError。
+    """
+    url = ('https://nominatim.openstreetmap.org/reverse?'
+           + urllib.parse.urlencode({
+               'format': 'jsonv2',
+               'lat': latitude,
+               'lon': longitude,
+               'accept-language': 'zh',
+               'zoom': 10,
+           }))
+    req = urllib.request.Request(
+        url, headers={'User-Agent': 'MyDay/1.x (personal app)'})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = json.loads(resp.read().decode('utf-8'))
+    except Exception as exc:
+        raise WeatherError('反查地名失败：%s' % exc)
+    address = raw.get('address') or {}
+    name = ''
+    for key in ('city', 'town', 'county', 'village', 'state'):
+        value = str(address.get(key) or '').strip()
+        if value:
+            name = value
+            break
+    if not name:
+        raise WeatherError('定位到了坐标，但没认出城市名')
+    return {'name': name, 'admin': str(address.get('state') or '').strip()}
+
+
 def http_get_json(url, timeout=TIMEOUT):
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:

@@ -406,7 +406,8 @@ class TestImportFrontend(unittest.TestCase):
         self.assertIn("api('/api/import'", js)
         for fn in ('function pickTimetableFile', 'function showImportDialog', 'function finishImport'):
             self.assertIn(fn, js, 'app.js 缺少 ' + fn)
-        self.assertIn('accept = \'.xlsx\'', js, '文件选择器要限定 xlsx')
+        # 课表导入同时收 xlsx 和 PDF（教务系统两种都会给）
+        self.assertIn("accept = '.xlsx,.pdf'", js, '文件选择器要限定 xlsx / pdf')
 
     def test_import_refreshes_ui(self):
         js = (STATIC_DIR / 'app.js').read_text(encoding='utf-8')

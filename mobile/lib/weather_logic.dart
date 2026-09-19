@@ -66,6 +66,9 @@ int? _asIntOrNull(dynamic v) {
   return null;
 }
 
+/// 公开版：解析接口里的整数（人口等字段用）。
+int? asIntOrNull(dynamic v) => _asIntOrNull(v);
+
 // ---------- 风向 ----------
 const List<String> windNames = <String>[
   '北', '东北偏北', '东北', '东北偏东', '东', '东南偏东', '东南', '东南偏南',

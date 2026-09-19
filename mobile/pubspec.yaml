@@ -16,9 +16,10 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-# 1.1.1：修「浅色模式下进编辑清单/编辑笔记页变黑底」（独立路由没垫玻璃渐变背景）。
-# 构建号 +1（上一个安装包是 1.1.0+3）。
-version: 1.1.1+4
+# 1.1.2：修「城市搜索省份显示错」（阜阳→江苏）：Open-Meteo 中文索引不全，
+# 中文输入时补一发带「市」/去「市」的查询，结果合并按人口排序。
+# 构建号 +1（上一个安装包是 1.1.1+4）。
+version: 1.1.2+5
 
 environment:
   sdk: ^3.13.3

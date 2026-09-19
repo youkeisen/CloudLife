@@ -16,9 +16,9 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-# 1.4.1：设置页底部新增「关于」卡片——显示当前版本号和历次更新日志。
-# 构建号 +1（上一个安装包是 1.4.0+16）。
-version: 1.4.1+17
+# 1.4.2：课表长按复制/粘贴——长按有课格子复制，长按空格子粘贴成单节，
+# 被复制的格子描边高亮。构建号 +1（上一个安装包是 1.4.1+17）。
+version: 1.4.2+18
 
 environment:
   sdk: ^3.13.3

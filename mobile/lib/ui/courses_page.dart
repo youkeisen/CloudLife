@@ -643,6 +643,40 @@ class _CoursesPageState extends State<CoursesPage> {
     );
   }
 
+  /// 长按复制的课（应用内剪贴板，切周不清除）
+  Lesson? _copied;
+
+  /// 长按有课的格子 = 复制这节课；长按空格子 = 把复制的课贴过来（单节）。
+  void _onCellLongPress(Lesson? lesson, int day, String slot) {
+    if (lesson != null) {
+      if (lesson.name.isEmpty) {
+        _toast('这节课没名字，不用复制');
+        return;
+      }
+      setState(() => _copied = lesson);
+      _toast('已复制「${lesson.name}」，长按空格子粘贴');
+      return;
+    }
+    final src = _copied;
+    if (src == null) {
+      _toast('还没有复制的课，先长按一节有课的格子');
+      return;
+    }
+    // 只贴成单节：跨节次的课贴过去容易被别的课占位，宁可简单可靠
+    final courses = widget.store.courses();
+    final weekList = courses.weeks[_week] ?? <Lesson>[];
+    weekList.add(src.copyWith(
+      id: widget.store.newId('c'),
+      day: day,
+      slot: slot,
+      spanEnd: '',
+    ));
+    courses.weeks[_week] = weekList;
+    widget.store.saveCourses(courses);
+    setState(() {});
+    _toast('已粘贴「${src.name}」（第 $day 天 $slot）');
+  }
+
   Widget _buildTable(List<Period> periods, List<Lesson> lessons, Settings settings) {
     final days = dayOrder(settings.weekStartsOn);
     final now = DateTime.now();
@@ -727,12 +761,15 @@ class _CoursesPageState extends State<CoursesPage> {
           }
         }
         final h = span * pitch - _cellGap;
+        final isCopied = lesson != null && lesson.id == _copied?.id;
         cells.add(
           GestureDetector(
             key: lesson != null
                 ? ValueKey('lesson-${lesson.id}')
                 : ValueKey('cell-${d.num}-${p.id}'),
             onTap: () => _openEditor(lesson: lesson, day: d.num, slot: p.id),
+            // 长按有课的格子 = 复制；长按空格子 = 粘贴（凯森 v1.4.1 反馈）
+            onLongPress: () => _onCellLongPress(lesson, d.num, p.id),
             child: Container(
               height: h,
               margin: const EdgeInsets.only(right: _cellGap, bottom: _cellGap),
@@ -740,6 +777,9 @@ class _CoursesPageState extends State<CoursesPage> {
               decoration: BoxDecoration(
                 color: lesson == null ? cs.surfaceContainerHighest : cs.primaryContainer,
                 borderRadius: BorderRadius.circular(8),
+                border: isCopied
+                    ? Border.all(color: cs.primary, width: 1.5)
+                    : null,
               ),
               alignment: Alignment.topLeft,
               child: lesson == null

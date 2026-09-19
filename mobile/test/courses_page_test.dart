@@ -65,6 +65,40 @@ void main() {
         reason: '要告诉用户去哪里加节次');
   });
 
+  testWidgets('长按复制 / 粘贴（v1.4.2）', (tester) async {
+    addPeriods();
+    addLesson(lesson('l1', name: '高等数学', location: 'A101'));
+    await pumpPage(tester);
+
+    // 长按有课的格子 → 复制
+    await tester.longPress(find.byKey(const ValueKey('lesson-l1')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('已复制「高等数学」'), findsOneWidget);
+    await pastToast(tester);
+
+    // 长按空格子（周三 p1）→ 粘贴成单节
+    await tester.longPress(find.byKey(const ValueKey('cell-3-p1')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('已粘贴「高等数学」'), findsOneWidget);
+    final lessons = store.listWeek(1);
+    expect(lessons.length, 2);
+    final pasted = lessons.firstWhere((l) => l.id != 'l1');
+    expect(pasted.day, 3);
+    expect(pasted.slot, 'p1');
+    expect(pasted.spanEnd, '', reason: '粘贴只贴单节，不带走跨节次');
+    expect(pasted.name, '高等数学');
+    expect(pasted.location, 'A101');
+    await pastToast(tester);
+
+    // 长按空格子（周四 p1，剪贴板已有内容）→ 再贴一份，id 不重复
+    await tester.longPress(find.byKey(const ValueKey('cell-4-p1')));
+    await tester.pumpAndSettle();
+    final list2 = store.listWeek(1);
+    expect(list2.length, 3);
+    expect(list2.map((l) => l.id).toSet().length, 3);
+    await pastToast(tester);
+  });
+
   testWidgets('渲染课表：课块内容齐全，跨节次的格子被跳过', (tester) async {
     addPeriods();
     addLesson(lesson('l1', name: '高等数学', location: 'A101'));

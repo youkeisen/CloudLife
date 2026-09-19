@@ -93,6 +93,69 @@ def build_geocode_url(name):
     return GEO + '?' + urllib.parse.urlencode({'name': name, 'language': 'zh', 'count': 8})
 
 
+def _place_pop(item):
+    p = item.get('population')
+    return p if isinstance(p, (int, float)) else -1
+
+
+def merge_place_results(a, b):
+    """合并两批城市搜索结果：按坐标去重（同名城市两套查询都会返回），
+    人口多的留下；最后按人口从大到小排——大城市天然排前面，
+    同名小村子（Open-Meteo 中文数据的常见坑）沉底。"""
+    merged = []
+    index_of = {}
+    for item in list(a or []) + list(b or []):
+        key = (round(float(item.get('latitude') or 0) * 100),
+               round(float(item.get('longitude') or 0) * 100))
+        idx = index_of.get(key)
+        if idx is None:
+            index_of[key] = len(merged)
+            merged.append(item)
+        elif _place_pop(item) > _place_pop(merged[idx]):
+            merged[idx] = item
+    merged.sort(key=_place_pop, reverse=True)
+    return merged
+
+
+def city_query_variant(name):
+    """给中文城市名配一个补充查询：阜阳 ↔ 阜阳市。
+    Open-Meteo 的中文索引不全——搜「阜阳」只会命中江苏的同名村，
+    带「市」后缀才能搜到安徽阜阳市；反过来有的城市又必须去后缀。"""
+    name = (name or '').strip()
+    if not name:
+        return None
+    if name.endswith('市'):
+        return name[:-1] or None
+    if all('\u4e00' <= ch <= '\u9fff' for ch in name):
+        return name + '市'
+    return None
+
+
+def _geocode(name, timeout):
+    raw = http_get_json(build_geocode_url(name), timeout)
+    return [{
+        'name': item.get('name'),
+        'admin': item.get('admin1') or '',
+        'country': item.get('country') or '',
+        'latitude': item.get('latitude'),
+        'longitude': item.get('longitude'),
+        'population': item.get('population'),
+    } for item in (raw.get('results') or [])]
+
+
+def search_cities(name, timeout=TIMEOUT):
+    name = (name or '').strip()
+    results = _geocode(name, timeout)
+    variant = city_query_variant(name)
+    if variant:
+        try:
+            results = merge_place_results(results, _geocode(variant, timeout))
+        except Exception:
+            pass  # 补充查询失败不影响第一发的结果
+    return results
+
+
+
 def http_get_json(url, timeout=TIMEOUT):
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
@@ -232,16 +295,3 @@ def build_tips(payload):
         pass
     return tips
 
-
-def search_cities(name, timeout=TIMEOUT):
-    raw = http_get_json(build_geocode_url(name), timeout)
-    out = []
-    for item in (raw.get('results') or []):
-        out.append({
-            'name': item.get('name'),
-            'admin': item.get('admin1') or '',
-            'country': item.get('country') or '',
-            'latitude': item.get('latitude'),
-            'longitude': item.get('longitude'),
-        })
-    return out

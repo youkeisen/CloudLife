@@ -195,5 +195,31 @@ class TestWeatherApi(ServerTestCase):
         self.assertTrue(res['json']['data']['cities'])
 
 
+class TestCitySearchMerge(unittest.TestCase):
+    """修「阜阳显示成江苏」：Open-Meteo 中文索引不全，要双查询合并按人口排。"""
+
+    def test_merge_puts_big_city_first(self):
+        village = {'name': '阜阳', 'admin': '江苏',
+                   'latitude': 33.79932, 'longitude': 119.70367}
+        city = {'name': '阜阳市', 'admin': '安徽', 'latitude': 32.9,
+                'longitude': 115.8, 'population': 1768947}
+        merged = wx.merge_place_results([village], [city])
+        self.assertEqual(len(merged), 2)
+        self.assertEqual(merged[0]['admin'], '安徽')  # 人口多的真城市排前面
+
+    def test_merge_dedupes_same_city(self):
+        a = {'name': '合肥', 'admin': '安徽',
+             'latitude': 31.86389, 'longitude': 117.28, 'population': 5050000}
+        b = {'name': '合肥市', 'admin': '安徽',
+             'latitude': 31.86389, 'longitude': 117.28, 'population': 5050000}
+        self.assertEqual(len(wx.merge_place_results([a], [b])), 1)  # 同一座城去重
+
+    def test_city_query_variant(self):
+        self.assertEqual(wx.city_query_variant('阜阳'), '阜阳市')
+        self.assertEqual(wx.city_query_variant('阜阳市'), '阜阳')
+        self.assertIsNone(wx.city_query_variant('Fuyang'))
+        self.assertIsNone(wx.city_query_variant('  '))
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

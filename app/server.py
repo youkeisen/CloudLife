@@ -26,7 +26,7 @@ ROOT_DIR = os.path.dirname(APP_DIR)
 sys.path.insert(0, APP_DIR)
 import store  # noqa: E402
 
-APP_VERSION = '1.1.0'
+APP_VERSION = '1.1.1'
 CST = timezone(timedelta(hours=8))
 
 

@@ -65,6 +65,37 @@ void main() {
         reason: '要告诉用户去哪里加节次');
   });
 
+  testWidgets('合并模式：点选相邻两格合成连堂（v1.4.3）', (tester) async {
+    addPeriods();
+    addLesson(lesson('l1', name: '高等数学', slot: 'p1', location: 'C303'));
+    addLesson(lesson('l2', name: '高等数学', slot: 'p2', location: 'C303'));
+    await pumpPage(tester);
+
+    // 进合并模式
+    await tester.tap(find.byKey(const ValueKey('btn-merge')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('merge-banner')), findsOneWidget);
+
+    // 点选同一天相邻的两格（p1、p2 都有课）
+    await tester.tap(find.byKey(const ValueKey('lesson-l1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('lesson-l2')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('已选 2 格'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('btn-merge-confirm')));
+    await tester.pumpAndSettle();
+
+    final lessons = store.listWeek(1);
+    expect(lessons.length, 1, reason: '两节合成一节连堂');
+    expect(lessons.first.slot, 'p1');
+    expect(lessons.first.spanEnd, 'p2');
+    expect(lessons.first.name, '高等数学');
+    expect(find.byKey(const ValueKey('merge-banner')), findsNothing,
+        reason: '合并完自动退出合并模式');
+    await pastToast(tester);
+  });
+
   testWidgets('长按复制 / 粘贴（v1.4.2）', (tester) async {
     addPeriods();
     addLesson(lesson('l1', name: '高等数学', location: 'A101'));

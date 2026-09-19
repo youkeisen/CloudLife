@@ -569,45 +569,73 @@ class _CoursesPageState extends State<CoursesPage> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-          child: Wrap(
-            spacing: 6,
+          child: Row(
             children: <Widget>[
-              OutlinedButton.icon(
+              _toolbarBtn(
                 key: const ValueKey('btn-add-course'),
-                style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                ),
                 onPressed: () => _openEditor(),
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('添加课程',
-                    style: TextStyle(fontSize: 13)),
+                icon: Icons.add,
+                label: '添加课程',
               ),
-              OutlinedButton.icon(
+              _toolbarBtn(
                 key: const ValueKey('btn-copy-week'),
-                style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                ),
                 onPressed: () => _openCopyDialog(lessons.length),
-                icon: const Icon(Icons.copy_all_outlined, size: 16),
-                label: const Text('复制整周',
-                    style: TextStyle(fontSize: 13)),
+                icon: Icons.copy_all_outlined,
+                label: '复制整周',
               ),
-              OutlinedButton.icon(
+              _toolbarBtn(
                 key: const ValueKey('btn-clear-week'),
-                style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                ),
                 onPressed: _confirmClear,
-                icon: const Icon(Icons.delete_outline, size: 16),
-                label: const Text('清空本周',
-                    style: TextStyle(fontSize: 13)),
+                icon: Icons.delete_outline,
+                label: '清空本周',
+              ),
+              _toolbarBtn(
+                key: const ValueKey('btn-merge'),
+                onPressed: _toggleMergeMode,
+                icon: Icons.join_full_outlined,
+                label: _mergeMode ? '取消合并' : '合并',
+                highlighted: _mergeMode,
               ),
             ],
           ),
         ),
+        if (_mergeMode)
+          Container(
+            key: const ValueKey('merge-banner'),
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            decoration: BoxDecoration(
+              color: cs.primaryContainer,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(children: <Widget>[
+              Expanded(
+                child: Text(
+                  _mergeSel.length < 2
+                      ? '合并模式：点选同一节课的 2~3 个相邻格子'
+                      : '已选 ${_mergeSel.length} 格，点「合并」变成一节连堂',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+              TextButton(
+                key: const ValueKey('btn-merge-cancel'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: _exitMergeMode,
+                child: const Text('取消'),
+              ),
+              const SizedBox(width: 4),
+              FilledButton(
+                key: const ValueKey('btn-merge-confirm'),
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: _mergeSel.length < 2 ? null : _doMerge,
+                child: const Text('合并'),
+              ),
+            ]),
+          ),
         Expanded(
           child: periods.isEmpty
               ? _emptyPeriods(cs)
@@ -639,6 +667,29 @@ class _CoursesPageState extends State<CoursesPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 工具栏按钮：四个平分一行。
+  Widget _toolbarBtn(
+      {required Key key,
+      required VoidCallback onPressed,
+      required IconData icon,
+      required String label,
+      bool highlighted = false}) {
+    return Expanded(
+      child: OutlinedButton.icon(
+        key: key,
+        style: OutlinedButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          foregroundColor:
+              highlighted ? Theme.of(context).colorScheme.primary : null,
+        ),
+        onPressed: onPressed,
+        icon: Icon(icon, size: 15),
+        label: Text(label, style: const TextStyle(fontSize: 12)),
       ),
     );
   }
@@ -675,6 +726,101 @@ class _CoursesPageState extends State<CoursesPage> {
     widget.store.saveCourses(courses);
     setState(() {});
     _toast('已粘贴「${src.name}」（第 $day 天 $slot）');
+  }
+
+  // ---------- 合并模式 ----------
+
+  bool _mergeMode = false;
+  final Set<String> _mergeSel = <String>{}; // 'day@slot'
+
+  void _toggleMergeMode() {
+    setState(() {
+      _mergeMode = !_mergeMode;
+      _mergeSel.clear();
+    });
+  }
+
+  void _exitMergeMode() {
+    setState(() {
+      _mergeMode = false;
+      _mergeSel.clear();
+    });
+  }
+
+  /// 合并模式里点格子：只允许同一天、节次相邻，最多选到节次表末尾。
+  void _toggleMergeCell(int day, String slot, List<Period> periods) {
+    final key = '$day@$slot';
+    setState(() {
+      if (_mergeSel.remove(key)) return;
+      if (_mergeSel.isEmpty) {
+        _mergeSel.add(key);
+        return;
+      }
+      // 校验：同一天 + 与已选的节次相邻
+      String dayOf(String k) => k.split('@')[0];
+      String slotOf(String k) => k.split('@')[1];
+      final sameDay = _mergeSel.every((k) => dayOf(k) == '$day');
+      if (!sameDay) {
+        _toast('要合并的格子必须在同一天');
+        return;
+      }
+      int idxOf(String s) => periods.indexWhere((p) => p.id == s);
+      final idxs = _mergeSel.map((k) => idxOf(slotOf(k))).toList()..sort();
+      final myIdx = idxOf(slot);
+      if (myIdx < 0) return;
+      final minIdx = idxs.first, maxIdx = idxs.last;
+      if (myIdx != minIdx - 1 && myIdx != maxIdx + 1) {
+        _toast('只能选相邻的节次');
+        return;
+      }
+      _mergeSel.add(key);
+    });
+  }
+
+  /// 执行合并：选中范围内的旧课全部去掉，换成一条 spanEnd 到最后节次的课。
+  void _doMerge() {
+    final periods = widget.store.settings().periods;
+    if (_mergeSel.length < 2) return;
+    final day = int.parse(_mergeSel.first.split('@')[0]);
+    final idxs = _mergeSel
+        .map((k) => periods.indexWhere((p) => p.id == k.split('@')[1]))
+        .toList()
+      ..sort();
+    for (var i = 1; i < idxs.length; i++) {
+      if (idxs[i] != idxs[i - 1] + 1) {
+        _toast('只能合并相邻的节次');
+        return;
+      }
+    }
+    final first = periods[idxs.first];
+    final last = periods[idxs.last];
+    final slotSet = _mergeSel.map((k) => k.split('@')[1]).toSet();
+
+    final courses = widget.store.courses();
+    final weekList = courses.weeks[_week] ?? <Lesson>[];
+    // 范围内的旧课：拿第一门有名字的当内容，其余全部移除
+    Lesson? merged;
+    weekList.removeWhere((l) {
+      if (l.day != day || !slotSet.contains(l.slot)) return false;
+      merged ??= l;
+      return true;
+    });
+    final src = merged;
+    weekList.add(Lesson(
+      id: widget.store.newId('c'),
+      day: day,
+      slot: first.id,
+      spanEnd: last.id,
+      name: src?.name ?? '',
+      location: src?.location ?? '',
+      teacher: src?.teacher ?? '',
+      note: src?.note ?? '',
+      color: src?.color ?? '',
+    ));
+    courses.weeks[_week] = weekList;
+    widget.store.saveCourses(courses);
+    _exitMergeMode();
+    _toast('已合并成 ${idxs.length} 节连堂');
   }
 
   Widget _buildTable(List<Period> periods, List<Lesson> lessons, Settings settings) {
@@ -762,23 +908,32 @@ class _CoursesPageState extends State<CoursesPage> {
         }
         final h = span * pitch - _cellGap;
         final isCopied = lesson != null && lesson.id == _copied?.id;
+        final isSel = _mergeMode && _mergeSel.contains('${d.num}@${p.id}');
         cells.add(
           GestureDetector(
             key: lesson != null
                 ? ValueKey('lesson-${lesson.id}')
                 : ValueKey('cell-${d.num}-${p.id}'),
-            onTap: () => _openEditor(lesson: lesson, day: d.num, slot: p.id),
+            onTap: _mergeMode
+                ? () => _toggleMergeCell(d.num, p.id, periods)
+                : () => _openEditor(lesson: lesson, day: d.num, slot: p.id),
             // 长按有课的格子 = 复制；长按空格子 = 粘贴（凯森 v1.4.1 反馈）
-            onLongPress: () => _onCellLongPress(lesson, d.num, p.id),
+            onLongPress:
+                _mergeMode ? null : () => _onCellLongPress(lesson, d.num, p.id),
             child: Container(
               height: h,
               margin: const EdgeInsets.only(right: _cellGap, bottom: _cellGap),
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: lesson == null ? cs.surfaceContainerHighest : cs.primaryContainer,
+                color: isSel
+                    ? cs.primary.withValues(alpha: 0.35)
+                    : lesson == null
+                        ? cs.surfaceContainerHighest
+                        : cs.primaryContainer,
                 borderRadius: BorderRadius.circular(8),
-                border: isCopied
-                    ? Border.all(color: cs.primary, width: 1.5)
+                border: (isCopied || isSel)
+                    ? Border.all(
+                        color: cs.primary, width: isSel ? 2 : 1.5)
                     : null,
               ),
               alignment: Alignment.topLeft,

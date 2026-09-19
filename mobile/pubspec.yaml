@@ -16,9 +16,9 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-# 1.4.2：课表长按复制/粘贴——长按有课格子复制，长按空格子粘贴成单节，
-# 被复制的格子描边高亮。构建号 +1（上一个安装包是 1.4.1+17）。
-version: 1.4.2+18
+# 1.4.3：课表合并连堂——合并模式点选相邻格子（含已有课的）合成一节 spanEnd 课；
+# 工具栏四个按钮平分一行。构建号 +1（上一个安装包是 1.4.2+18）。
+version: 1.4.3+19
 
 environment:
   sdk: ^3.13.3

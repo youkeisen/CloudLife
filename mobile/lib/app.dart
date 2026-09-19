@@ -32,7 +32,7 @@ class _MyDayAppState extends State<MyDayApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MyDay',
+      title: '云生活',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),

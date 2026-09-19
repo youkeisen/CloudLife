@@ -89,35 +89,17 @@ void main() {
 
   Period periodAt(int i) => store.settings().periods[i];
 
-  testWidgets('四个区块都渲染，输入框带出已有值', (tester) async {
-    final s = store.settings()
-      ..displayName = '测试称呼'
-      ..semesterName = '测试学期';
-    store.saveSettings(s);
+  testWidgets('四个区块都渲染', (tester) async {
     await pumpPage(tester);
 
     expect(find.text('基本'), findsOneWidget);
     expect(find.text('天气'), findsOneWidget);
     expect(find.text('作息与节次（全部自定义）'), findsOneWidget);
     expect(find.text('数据'), findsOneWidget);
-    expect(find.byKey(const ValueKey('s-name')), findsOneWidget);
-    final ctrl = tester.widget<TextField>(find.byKey(const ValueKey('s-name'))).controller!;
-    expect(ctrl.text, '测试称呼');
-    final semCtrl = tester.widget<TextField>(find.byKey(const ValueKey('s-semester'))).controller!;
-    expect(semCtrl.text, '测试学期');
-  });
-
-  testWidgets('改称呼 / 学期名 / 校区，逐字落盘', (tester) async {
-    await pumpPage(tester);
-    await tester.enterText(find.byKey(const ValueKey('s-name')), '测试称呼');
-    await tester.enterText(find.byKey(const ValueKey('s-semester')), '测试学期');
-    await tester.enterText(find.byKey(const ValueKey('s-campus')), '测试校区');
-    await tester.pumpAndSettle();
-
-    final json = settingsJson();
-    expect(json['displayName'], '测试称呼');
-    expect(json['semesterName'], '测试学期');
-    expect(json['campus'], '测试校区');
+    // v1.3.6 起：称呼 / 学期名 / 校区三个输入框按凯森要求删掉了
+    expect(find.byKey(const ValueKey('s-name')), findsNothing);
+    expect(find.byKey(const ValueKey('s-semester')), findsNothing);
+    expect(find.byKey(const ValueKey('s-campus')), findsNothing);
   });
 
   testWidgets('选第 1 周周一日期：日期选择器 → 落盘', (tester) async {

@@ -16,9 +16,10 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-# 1.3.5：作息与节次卡片加小三角收放（默认收起，显示节次数摘要，点标题展开）。
-# 构建号 +1（上一个安装包是 1.3.4+11）。
-version: 1.3.5+12
+# 1.3.6：修定位（服务开关检查、缓存位置优先、超时放宽到 30 秒、提示更友好）；
+# 设置页删掉称呼/学期名/校区；页面底部留白防悬浮栏遮挡；应用改名「云生活」。
+# 构建号 +1（上一个安装包是 1.3.5+12）。
+version: 1.3.6+13
 
 environment:
   sdk: ^3.13.3

@@ -519,7 +519,7 @@ class _HomePageState extends State<HomePage> {
 
     return ListView(
       key: const ValueKey('page-home'),
-      padding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 110),
       children: <Widget>[
         Padding(
           key: const ValueKey('home-greet'),

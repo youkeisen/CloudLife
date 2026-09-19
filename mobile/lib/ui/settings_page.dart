@@ -7,6 +7,8 @@
 /// - 外观改动通过 [SettingsPage.onChanged] 一路通知到 MaterialApp 重建。
 library;
 
+import 'dart:async' show TimeoutException;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPicker, FixedExtentScrollController;
 import 'package:flutter/material.dart';
@@ -54,9 +56,6 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late Settings _s = widget.store.settings();
-  late final TextEditingController _nameCtrl = TextEditingController(text: _s.displayName);
-  late final TextEditingController _semCtrl = TextEditingController(text: _s.semesterName);
-  late final TextEditingController _campusCtrl = TextEditingController(text: _s.campus);
   late final WeatherApi _api = widget.api ?? WeatherApi();
 
   bool _addingPlace = false;
@@ -69,16 +68,10 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _nameCtrl.addListener(() => _save((s) => s.displayName = _nameCtrl.text));
-    _semCtrl.addListener(() => _save((s) => s.semesterName = _semCtrl.text));
-    _campusCtrl.addListener(() => _save((s) => s.campus = _campusCtrl.text));
   }
 
   @override
   void dispose() {
-    _nameCtrl.dispose();
-    _semCtrl.dispose();
-    _campusCtrl.dispose();
     _placeCtrl.dispose();
     super.dispose();
   }
@@ -323,7 +316,12 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// 真定位：geolocator 拿坐标 + Nominatim 反查城市名。
+  /// 先查定位服务开关，再用最近位置（秒回），最后才等 GPS 实测。
   Future<LocateSpot?> _locateReal() async {
+    final serviceOn = await Geolocator.isLocationServiceEnabled();
+    if (!serviceOn) {
+      throw const FormatException('手机的定位服务（GPS）没开，下拉控制中心打开后再试');
+    }
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -333,12 +331,20 @@ class _SettingsPageState extends State<SettingsPage> {
         permission == LocationPermission.unableToDetermine) {
       return null;
     }
-    final pos = await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        timeLimit: Duration(seconds: 15),
-      ),
-    );
+    // 最近位置可能没有缓存（null），那就现场等 GPS，超时放宽到 30 秒
+    Position? pos = await Geolocator.getLastKnownPosition();
+    if (pos == null) {
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 30),
+          ),
+        );
+      } on TimeoutException {
+        throw const FormatException('定位超时：室内可能收不到 GPS，到窗边或连上 Wi-Fi 再试一次');
+      }
+    }
     final city =
         await _api.reverseGeocode(pos.latitude, pos.longitude);
     return LocateSpot(
@@ -389,21 +395,10 @@ class _SettingsPageState extends State<SettingsPage> {
     final cs = Theme.of(context).colorScheme;
     return ListView(
       key: const ValueKey('page-settings'),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+      // 底部留 110：悬浮底栏是盖在内容上的，不留会被挡住（凯森 v1.3.5 反馈）
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 110),
       children: <Widget>[
         _card(context, '基本', <Widget>[
-          _field('称呼', '首页问候用，随便填',
-              TextField(
-                key: const ValueKey('s-name'),
-                controller: _nameCtrl,
-                decoration: const InputDecoration(hintText: '未填写'),
-              )),
-          _field('学期名', '只用于显示',
-              TextField(
-                key: const ValueKey('s-semester'),
-                controller: _semCtrl,
-                decoration: const InputDecoration(hintText: '例如：本学期'),
-              )),
           _field('第 1 周周一日期', '必填，用来算今天是第几教学周',
               InkWell(
                 key: const ValueKey('s-week1'),
@@ -425,12 +420,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   DropdownMenuItem<int>(value: 7, child: Text('周日')),
                 ],
                 onChanged: (int? v) => v == null ? null : _save((s) => s.weekStartsOn = v),
-              )),
-          _field('校区 / 地点备注', '可留空',
-              TextField(
-                key: const ValueKey('s-campus'),
-                controller: _campusCtrl,
-                decoration: const InputDecoration(hintText: '未填写'),
               )),
           _field('外观', null,
               DropdownButtonFormField<String>(

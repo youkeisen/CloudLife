@@ -26,17 +26,19 @@ Set-Location D:\App\MyDay\mobile
 环境：Flutter 3.47.4 / Dart 3.13.3（`D:\dev\flutter`）、Android SDK `D:\dev\Android\sdk`、
 JDK 21、Gradle 9.3.1。包名 `com.youkeisen.my_day_phone`。
 
-## 发布流程（凯森手动点发布）
+## 发布流程（2026-09-19 16:50 起改：GitHub 上传由小凯负责）
 
 **版本号规则（凯森 2026-09-19 定）**：三段式 主.次.修订，起步 1.0.0。
 修 bug → 修订 +1；加功能 → 次 +1 且修订清 0；主版本由凯森决定。
 pubspec.yaml 写成 `主.次.修订+构建号`，构建号每出一个安装包 +1。
 
 1. 改 pubspec.yaml 的 `version:`（比如修 bug 后 `1.0.1+2`、加功能后 `1.1.0+3`）；
-2. 我跑 `flutter build apk --release`，把产出的 APK 放到他指定的目录（默认 `D:\App\apk\`）；
-3. 他在 GitHub 上 CloudLife 仓库 → Releases → Draft a new release，打 tag（如 `mobile-v1.0.1`）、
-   写上这版做了什么、把 APK 拖进附件，发布；
-4. 他自己在手机上装（首次要允许「安装未知来源应用」）。
+2. `flutter analyze` + `flutter test` 全绿后 `flutter build apk --release`，
+   产物拷到 `D:\App\apk\MyDay-手机版-vX.Y.Z.apk`；
+3. 小凯提交并推送（commit 信息里写清版本与改动）；
+4. 小凯用 GitHub API 发 Release：tag `mobile-vX.Y.Z`、标题=版本名、描述=更新内容、
+   附件传 APK（令牌走 git credential fill，不落盘不进日志）；
+5. 凯森在手机上下载安装（覆盖装数据保留）。
 
 ## 依赖（尽量少）
 

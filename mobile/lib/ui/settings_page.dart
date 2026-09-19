@@ -14,8 +14,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPicker, FixedExtentScrollController;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../backup.dart';
+import '../changelog.dart' show kChangelog;
 import '../models.dart';
 import '../store.dart';
 import '../weather_api.dart';
@@ -69,6 +71,15 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
+    // 「关于」里展示的版本号来自安装包本身（pubspec 的 version）
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) {
+        setState(() {
+          _appVersion = info.version;
+          _appBuild = info.buildNumber;
+        });
+      }
+    }).catchError((_) {});
   }
 
   @override
@@ -618,12 +629,54 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ]),
+        _cardCollapsible(context, '关于',
+            key: const ValueKey('s-about-card'),
+            toggleKey: 's-about-toggle',
+            open: _aboutOpen,
+            onToggle: () { _aboutOpen = !_aboutOpen; _toggleCollapse('about'); },
+            summary: _appVersion.isEmpty ? '' : 'v$_appVersion',
+            children: <Widget>[
+              Row(children: <Widget>[
+                const Text('云生活',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                Text(
+                  _appVersion.isEmpty
+                      ? '版本号读取中…'
+                      : 'v$_appVersion（构建 $_appBuild）',
+                  style: TextStyle(fontSize: 12, color: cs.outline),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              const Text('更新日志',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              for (final entry in kChangelog) ...<Widget>[
+                Text('v${entry.$1}',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: cs.primary)),
+                for (final line in entry.$2)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 10, bottom: 2),
+                    child: Text('· $line',
+                        style: TextStyle(
+                            fontSize: 12, color: cs.outline, height: 1.35)),
+                  ),
+                const SizedBox(height: 8),
+              ],
+        ]),
       ],
     );
   }
 
   /// 卡片收放状态记在设置文件的 extra.ui 里，重进不丢（凯森 v1.3.7 反馈）。
   /// 作息与节次默认收起（列表长），其余默认展开。
+  bool _aboutOpen = false;
+  String _appVersion = '';
+  String _appBuild = '';
   late bool _periodsOpen = _collapseFlag('periods', false);
   late bool _basicOpen = _collapseFlag('basic', true);
   late bool _weatherOpen = _collapseFlag('weather', true);

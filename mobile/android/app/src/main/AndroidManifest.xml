@@ -2,6 +2,9 @@
     <!-- 天气取数（Open-Meteo）要联网；debug/profile 清单里自带的权限不进正式包，
          这里必须显式声明，否则 release 包完全没网。 -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 定位添加地点用（模糊定位优先，精确定位可选） -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <application
         android:label="MyDay"
         android:name="${applicationName}"

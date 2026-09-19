@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../courses_logic.dart';
 import '../import_logic.dart';
 import '../models.dart';
+import '../pdf_timetable.dart';
 import '../store.dart';
 import '../timetable.dart';
 import '../week.dart';
@@ -69,7 +70,7 @@ class _CoursesPageState extends State<CoursesPage> {
     if (widget.pickTimetable != null) return widget.pickTimetable!();
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: <String>['xlsx'],
+      allowedExtensions: <String>['xlsx', 'pdf'],
       withData: true,
     );
     return result?.files.single.bytes;
@@ -85,19 +86,21 @@ class _CoursesPageState extends State<CoursesPage> {
     }
     if (bytes == null || bytes.isEmpty) return;
 
-    final ImportPlan plan;
+    final ParsedTimetable parsed;
     try {
-      plan = buildImportPlan(bytes, widget.store.settings());
+      parsed =
+          looksLikePdf(bytes) ? parsePdfTimetable(bytes) : parseTimetable(bytes);
     } on TimetableError catch (e) {
       _toast(e.message);
       return;
     }
     if (!mounted) return;
+    final plan = planFromParsed(parsed, widget.store.settings());
+    if (!mounted) return;
     final mode = await _askImportMode(plan);
     if (mode == null || !mounted) return;
 
     try {
-      final parsed = parseTimetable(bytes);
       final result = applyImport(widget.store, plan, parsed, mode);
       if (!mounted) return;
       setState(() {}); // 课表立刻刷新

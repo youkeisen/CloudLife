@@ -63,13 +63,15 @@ void main() {
     WidgetTester tester, {
     Future<List<int>?> Function()? pickZip,
     WeatherApi? api,
+    Future<TimeOfDay?> Function(TimeOfDay initial)? pickTime,
   }) async {
     tester.view.physicalSize = const Size(1080, 2600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: SettingsPage(store: store, pickZip: pickZip, api: api),
+        body: SettingsPage(
+            store: store, pickZip: pickZip, api: api, pickTime: pickTime),
       ),
     ));
     await tester.pumpAndSettle();
@@ -194,15 +196,25 @@ void main() {
       expect(periods.map((p) => p.id).toSet().length, 3);
     });
 
-    testWidgets('编辑名称与起止时间落盘', (tester) async {
-      await pumpPage(tester);
+    testWidgets('编辑名称与起止时间落盘（时间用选择器选）', (tester) async {
+      // 注入假时间选择器：第一次选开始 08:10，第二次选结束 08:50
+      final answers = <TimeOfDay>[
+        const TimeOfDay(hour: 8, minute: 10),
+        const TimeOfDay(hour: 8, minute: 50),
+      ];
+      await pumpPage(
+        tester,
+        pickTime: (TimeOfDay initial) async => answers.removeAt(0),
+      );
       await tester.tap(find.byKey(const ValueKey('s-add-period')));
       await tester.pumpAndSettle();
       final pid = periodAt(0).id;
 
       await tester.enterText(find.byKey(ValueKey('s-period-label-$pid')), '第 1 节');
-      await tester.enterText(find.byKey(ValueKey('s-period-start-$pid')), '08:10');
-      await tester.enterText(find.byKey(ValueKey('s-period-end-$pid')), '08:50');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey('s-period-start-$pid')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey('s-period-end-$pid')));
       await tester.pumpAndSettle();
 
       final p = periodAt(0);

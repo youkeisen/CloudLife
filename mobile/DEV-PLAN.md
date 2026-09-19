@@ -375,6 +375,28 @@ pubspec.yaml 写成 `主.次.修订+构建号`，构建号每出一个安装包 
   新增 test/city_merge_test.dart（5 用例）。**259 个测试全绿。**
 - 版本号按规矩：修 bug → 1.1.1 升 **1.1.2+5**。
 
+### v1.2.0（2026-09-19 17:30）：三个新功能
+
+1. **节次时间改时间选择器**：设置页的开始/结束时间框改成只读 + 点击弹
+   `showTimePicker`，不能再手输乱七八糟的内容。`SettingsPage.pickTime` 可注入（测试用）。
+2. **定位添加地点**：设置 → 天气 → 「定位添加」按钮。geolocator 拿坐标 +
+   Nominatim 反查城市名（`WeatherApi.reverseGeocode`，带 User-Agent），
+   走和搜索添加同一套落库。AndroidManifest 加了 ACCESS_COARSE/FINE_LOCATION。
+   `SettingsPage.locate` 可注入（测试用）。
+3. **课表导入支持 PDF**：新增 `lib/pdf_timetable.dart`（syncfusion_flutter_pdf）。
+   教务系统的课表 PDF 是**转置布局**（星期是行、节次是列，1-12 横排在底部），
+   解析器会自动识别两种方向。解析分两条路互补：A 按左边缘分桶（名字/周次准），
+   B 按「x 区间重叠聚簇」重建格子（场地/教师全），按 (天, 名字, 起始节) 合并。
+   课程名解析：标记前取最后一段不含 / : 的文字（甩掉串进来的碎片），去 ★☆。
+   导入入口现在同时收 .xlsx 和 .pdf（按 %PDF 魔数分流）；
+   `import_logic.planFromParsed` 抽出来共用下游。
+   手动验证工具：`tool/pdf_check_test.dart`（设 MYDAY_PDF 环境变量跑，不进测试；
+   用凯森的真实课表 PDF 本地验证过：18 门课全部解析，名称/节次/周次正确，
+   场地/教师部分有截断——PDF 是启发式解析，导入预览里要人工过一眼）。
+   测试：`city_merge_test.dart` 5 个 + `editor_backdrop_test.dart` 2 个 +
+   设置页时间选择器用例改造。**259 个测试全绿，analyze 无问题。**
+- 版本号按规矩：加功能 → 1.1.2 升 **1.2.0+6**（修订清 0）。
+
 ### M9 打包与真机验收（APK 已出，真机验收待凯森）
 
 - `flutter build apk --release` 成功：51.8 MB，产物在

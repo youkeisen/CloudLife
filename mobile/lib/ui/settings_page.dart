@@ -9,6 +9,7 @@ library;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../backup.dart';
 import '../models.dart';
@@ -23,12 +24,22 @@ class SettingsPage extends StatefulWidget {
     this.onChanged,
     this.pickZip,
     this.api,
+    this.pickTime,
+    this.locate,
   });
 
   final Store store;
 
   /// 任何设置变化后回调（ MyApp 用它重建，让外观/教学周等立即生效）。
   final VoidCallback? onChanged;
+
+  /// 节次时间选择器（测试注入用）；不给就走系统时间选择对话框。
+  final Future<TimeOfDay?> Function(TimeOfDay initial)? pickTime;
+
+  /// 定位加地点（测试注入用）：返回坐标 + 反查出的城市名；不给就走真定位。
+  /// 返回 null 表示用户没给权限/定位不可用。
+  final Future<LocateSpot?> Function()? locate;
+
 
   /// 选一个备份 zip 的字节；返回 null 表示没选。测试注入假选择器。
   final Future<List<int>?> Function()? pickZip;
@@ -52,6 +63,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _searching = false;
   List<CitySuggestion> _results = <CitySuggestion>[];
   String? _searchError;
+  bool _locating = false;
 
   @override
   void initState() {
@@ -276,6 +288,66 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
+  /// 定位加地点：拿到坐标和城市名后，走和搜索添加同一套落库逻辑。
+  Future<void> _locateAdd() async {
+    setState(() => _locating = true);
+    try {
+      final spot = await (widget.locate?.call() ?? _locateReal());
+      if (spot == null) {
+        _toast('没有拿到定位权限，或定位不可用');
+        return;
+      }
+      final write = addPlace(
+        _s.weatherCities,
+        <String, dynamic>{
+          'name': spot.name,
+          'admin': spot.admin,
+          'latitude': spot.latitude,
+          'longitude': spot.longitude,
+        },
+        newId: () => widget.store.newId('p'),
+      );
+      _save((s) {
+        s.weatherCities = write.places;
+        s.weatherCity = write.current;
+      });
+      _toast('已定位添加 ${spot.name}');
+    } on FormatException catch (e) {
+      _toast(e.message);
+    } catch (e) {
+      _toast('定位失败：$e');
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  /// 真定位：geolocator 拿坐标 + Nominatim 反查城市名。
+  Future<LocateSpot?> _locateReal() async {
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever ||
+        permission == LocationPermission.unableToDetermine) {
+      return null;
+    }
+    final pos = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 15),
+      ),
+    );
+    final city =
+        await _api.reverseGeocode(pos.latitude, pos.longitude);
+    return LocateSpot(
+      latitude: city.latitude ?? pos.latitude,
+      longitude: city.longitude ?? pos.longitude,
+      name: city.name,
+      admin: city.admin,
+    );
+  }
+
   void _removePlace(Place p) {
     final write = removePlace(_s.weatherCities, _s.weatherCity, p.id);
     _save((s) {
@@ -382,12 +454,25 @@ class _SettingsPageState extends State<SettingsPage> {
             for (final p in _s.weatherCities)
               _placeRow(context, p),
           const SizedBox(height: 8),
-          OutlinedButton.icon(
-            key: const ValueKey('s-add-place'),
-            onPressed: () => setState(() => _addingPlace = !_addingPlace),
-            icon: Icon(_addingPlace ? Icons.close : Icons.add),
-            label: Text(_addingPlace ? '收起' : '＋ 添加地点'),
-          ),
+          Row(children: <Widget>[
+            OutlinedButton.icon(
+              key: const ValueKey('s-add-place'),
+              onPressed: () => setState(() => _addingPlace = !_addingPlace),
+              icon: Icon(_addingPlace ? Icons.close : Icons.add),
+              label: Text(_addingPlace ? '收起' : '＋ 添加地点'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              key: const ValueKey('s-locate-place'),
+              onPressed: _locating ? null : _locateAdd,
+              icon: _locating
+                  ? const SizedBox(
+                      width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.my_location, size: 18),
+              label: const Text('定位添加'),
+            ),
+          ]),
           if (_addingPlace) ...<Widget>[
             const SizedBox(height: 8),
             Row(children: <Widget>[
@@ -461,6 +546,7 @@ class _SettingsPageState extends State<SettingsPage> {
               _PeriodRow(
                 key: ValueKey('s-period-${p.id}'),
                 period: p,
+                pickTime: widget.pickTime,
                 onChanged: (Period next) {
                   _save((s) {
                     final i = s.periods.indexWhere((x) => x.id == next.id);
@@ -640,11 +726,15 @@ class _PeriodRow extends StatefulWidget {
     required this.period,
     required this.onChanged,
     required this.onRemove,
+    this.pickTime,
   });
 
   final Period period;
   final ValueChanged<Period> onChanged;
   final VoidCallback onRemove;
+
+  /// 节次时间选择器（测试注入用）；不给就走系统时间选择对话框。
+  final Future<TimeOfDay?> Function(TimeOfDay initial)? pickTime;
 
   @override
   State<_PeriodRow> createState() => _PeriodRowState();
@@ -683,6 +773,47 @@ class _PeriodRowState extends State<_PeriodRow> {
     super.dispose();
   }
 
+  /// 点开始/结束时间框弹出时间选择器（不再手输，杜绝乱填中文）。
+  Future<void> _pickTime(bool isStart) async {
+    final current = (isStart ? _start.text : _end.text).trim();
+    final parts = current.split(':');
+    final initial = TimeOfDay(
+      hour: int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 8,
+      minute: parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0,
+    );
+    final picked = widget.pickTime != null
+        ? await widget.pickTime!(initial)
+        : await showTimePicker(context: context, initialTime: initial);
+    if (picked == null) return;
+    final text =
+        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    setState(() {
+      if (isStart) {
+        _start.text = text;
+      } else {
+        _end.text = text;
+      }
+    });
+  }
+
+  Widget _timeField(bool isStart) {
+    final controller = isStart ? _start : _end;
+    return TextField(
+      key: ValueKey(
+          's-period-${isStart ? 'start' : 'end'}-${widget.period.id}'),
+      controller: controller,
+      readOnly: true,
+      showCursor: false,
+      onTap: () => _pickTime(isStart),
+      decoration: InputDecoration(
+        hintText: isStart ? '开始时间' : '结束时间',
+        isDense: true,
+        suffixIcon: Icon(Icons.schedule,
+            size: 18, color: Theme.of(context).colorScheme.outline),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -698,23 +829,9 @@ class _PeriodRowState extends State<_PeriodRow> {
             ),
           ),
           const SizedBox(width: 6),
-          Expanded(
-            flex: 2,
-            child: TextField(
-              key: ValueKey('s-period-start-${widget.period.id}'),
-              controller: _start,
-              decoration: const InputDecoration(hintText: '开始 如 08:10', isDense: true),
-            ),
-          ),
+          Expanded(flex: 2, child: _timeField(true)),
           const SizedBox(width: 6),
-          Expanded(
-            flex: 2,
-            child: TextField(
-              key: ValueKey('s-period-end-${widget.period.id}'),
-              controller: _end,
-              decoration: const InputDecoration(hintText: '结束 如 08:50', isDense: true),
-            ),
-          ),
+          Expanded(flex: 2, child: _timeField(false)),
           IconButton(
             key: ValueKey('s-period-del-${widget.period.id}'),
             visualDensity: VisualDensity.compact,

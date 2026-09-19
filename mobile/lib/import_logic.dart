@@ -68,9 +68,12 @@ class ImportPlan {
   int get courseCount => courses.length;
 }
 
-/// 只解析给用户看，一个字都不写盘。
-ImportPlan buildImportPlan(List<int> raw, Settings settings) {
-  final parsed = parseTimetable(raw);
+/// 只解析给用户看，一个字都不写盘（xlsx 路径）。
+ImportPlan buildImportPlan(List<int> raw, Settings settings) =>
+    planFromParsed(parseTimetable(raw), settings);
+
+/// 从解析结果生成预览（xlsx 和 PDF 两条路都汇到这里）。
+ImportPlan planFromParsed(ParsedTimetable parsed, Settings settings) {
   final labels = periodLabels(parsed).map(periodLabelText).toList();
   final existing = settings.periods.map((p) => p.label.trim()).toSet();
   final courses = <PlanCourse>[];

@@ -16,10 +16,9 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-# 1.1.2：修「城市搜索省份显示错」（阜阳→江苏）：Open-Meteo 中文索引不全，
-# 中文输入时补一发带「市」/去「市」的查询，结果合并按人口排序。
-# 构建号 +1（上一个安装包是 1.1.1+4）。
-version: 1.1.2+5
+# 1.2.0：新功能三件——节次时间改时间选择器、课表导入支持 PDF、定位添加地点。
+# 构建号 +1（上一个安装包是 1.1.2+5）。
+version: 1.2.0+6
 
 environment:
   sdk: ^3.13.3
@@ -51,6 +50,8 @@ dependencies:
 
   # 从备份还原时选 zip 文件（M7）；测试里不碰它，靠注入假选择器
   file_picker: ^8.1.2
+  geolocator: ^14.0.2
+  syncfusion_flutter_pdf: ^33.2.13
 
 dev_dependencies:
   flutter_test:

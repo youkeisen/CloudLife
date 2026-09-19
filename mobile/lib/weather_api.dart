@@ -43,8 +43,22 @@ class CitySuggestion {
 
 int _popOf(CitySuggestion c) => c.population ?? -1;
 
+/// 定位加地点的结果：坐标 + 反查出来的城市名。
+class LocateSpot {
+  LocateSpot({
+    required this.latitude,
+    required this.longitude,
+    required this.name,
+    this.admin = '',
+  });
+
+  final double latitude;
+  final double longitude;
+  final String name;
+  final String admin;
+}
+
 /// 给中文城市名配一个补充查询：阜阳 ↔ 阜阳市。
-///
 /// Open-Meteo 的中文索引不全——搜「阜阳」只会命中江苏的同名小村，
 /// 带「市」后缀才能搜到安徽阜阳市；反过来有的城市又必须去后缀。
 String? cityQueryVariant(String name) {
@@ -104,8 +118,9 @@ class WeatherApi {
   final String geoBase;
   final Duration timeout;
 
-  Future<Map<String, dynamic>> httpGetJson(Uri url) async {
+  Future<Map<String, dynamic>> httpGetJson(Uri url, {String? userAgent}) async {
     final client = HttpClient()..connectionTimeout = timeout;
+    if (userAgent != null) client.userAgent = userAgent;
     try {
       final request = await client.getUrl(url).timeout(timeout);
       final response = await request.close().timeout(timeout);
@@ -175,5 +190,37 @@ class WeatherApi {
       }
     }
     return results;
+  }
+
+  /// 用坐标反查地名（Nominatim 免费服务，给「定位添加地点」用）。
+  /// 拿不到像样的城市名就抛 WeatherApiException。
+  Future<CitySuggestion> reverseGeocode(double latitude, double longitude) async {
+    final uri = Uri.parse('https://nominatim.openstreetmap.org/reverse')
+        .replace(queryParameters: <String, String>{
+      'format': 'jsonv2',
+      'lat': '$latitude',
+      'lon': '$longitude',
+      'accept-language': 'zh',
+      'zoom': '10',
+    });
+    final raw = await httpGetJson(uri,
+        userAgent: 'MyDay/1.x (personal app)');
+    final address = asMap(raw['address']);
+    final name = <String>[
+      asString(address['city']),
+      asString(address['town']),
+      asString(address['county']),
+      asString(address['village']),
+      asString(address['state']),
+    ].firstWhere((s) => s.isNotEmpty, orElse: () => '');
+    if (name.isEmpty) {
+      throw WeatherApiException('定位到了坐标，但没认出城市名');
+    }
+    return CitySuggestion(
+      name: name,
+      admin: asString(address['state']),
+      latitude: latitude,
+      longitude: longitude,
+    );
   }
 }

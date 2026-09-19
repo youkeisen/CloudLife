@@ -8,6 +8,7 @@
 library;
 
 import 'dart:async' show TimeoutException;
+import 'dart:io' show Platform;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPicker, FixedExtentScrollController;
@@ -331,15 +332,22 @@ class _SettingsPageState extends State<SettingsPage> {
         permission == LocationPermission.unableToDetermine) {
       return null;
     }
-    // 最近位置可能没有缓存（null），那就现场等 GPS，超时放宽到 30 秒
+    // 最近位置可能没有缓存（null），那就现场等 GPS，超时放宽到 30 秒。
+    // 安卓上强制走系统定位服务：部分国产机的融合定位会卡住不返回。
     Position? pos = await Geolocator.getLastKnownPosition();
     if (pos == null) {
       try {
         pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.medium,
-            timeLimit: Duration(seconds: 30),
-          ),
+          locationSettings: Platform.isAndroid
+              ? AndroidSettings(
+                  accuracy: LocationAccuracy.medium,
+                  timeLimit: const Duration(seconds: 30),
+                  forceLocationManager: true,
+                )
+              : const LocationSettings(
+                  accuracy: LocationAccuracy.medium,
+                  timeLimit: Duration(seconds: 30),
+                ),
         );
       } on TimeoutException {
         throw const FormatException('定位超时：室内可能收不到 GPS，到窗边或连上 Wi-Fi 再试一次');

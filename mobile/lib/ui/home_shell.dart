@@ -2,7 +2,6 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import '../models.dart';
 import '../store.dart';
 import '../weather_api.dart';
 import '../week.dart';
@@ -64,25 +63,6 @@ class _HomeShellState extends State<HomeShell> {
     ));
   }
 
-  /// 底栏中间那个凸起的「＋」：新建一条备忘录并直接进编辑页。
-  void _quickAddNote() {
-    final notes = widget.store.notes();
-    final now = Store.nowIso();
-    final note = Note(
-      id: widget.store.newId('n'),
-      title: '',
-      type: 'text',
-      tags: <String>[],
-      createdAt: now,
-      updatedAt: now,
-    );
-    notes.notes.add(note);
-    widget.store.saveNotes(notes);
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => NoteEditPage(store: widget.store, noteId: note.id),
-    ));
-  }
-
   /// 顶栏右侧那个「第几教学周」的小圆牌；教学周没设置时显示灰色提示。
   Widget _weekPill() {
     final week = weekOf(DateTime.now(), widget.store.settings().week1Monday);
@@ -134,54 +114,22 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  /// 底栏：一块悬浮的玻璃胶囊，中间一个凸起的「＋」。
+  /// 底栏：一块悬浮的玻璃胶囊，三个入口平分宽度。
   Widget _floatingBar() {
-    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-      child: SizedBox(
-        height: 68,
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
-          children: <Widget>[
-            Glass(
-              radius: 26,
-              blur: 26,
-              child: SizedBox(
-                height: 62,
-                child: Row(
-                  children: <Widget>[
-                    _barItem(0),
-                    _barItem(1),
-                    const Expanded(child: SizedBox()), // 给中间的「＋」让位
-                    _barItem(2),
-                    const Expanded(child: SizedBox(width: 0)),
-                  ],
-                ),
-              ),
-            ),
-            // 凸起的圆形「＋」：新建备忘录
-            Transform.translate(
-              offset: const Offset(26, -14),
-              child: SizedBox(
-                width: 56,
-                height: 56,
-                child: Material(
-                  key: const ValueKey('tab-quick-add'),
-                  color: cs.primary,
-                  shape: const CircleBorder(),
-                  elevation: 6,
-                  shadowColor: cs.primary.withValues(alpha: 0.5),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: _quickAddNote,
-                    child: const Icon(Icons.add, color: Colors.white, size: 28),
-                  ),
-                ),
-              ),
-            ),
-          ],
+      child: Glass(
+        radius: 26,
+        blur: 26,
+        child: SizedBox(
+          height: 62,
+          child: Row(
+            children: <Widget>[
+              _barItem(0),
+              _barItem(1),
+              _barItem(2),
+            ],
+          ),
         ),
       ),
     );

@@ -16,9 +16,9 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-# 1.3.1：班级课表 PDF（第二种格式）解析器调通——针灸推拿课表实测 16 门课可解析
-# （个别相邻格会有粘连，导入预览里可核对修改）。构建号 +1（上一个安装包是 1.3.0+7）。
-version: 1.3.1+8
+# 1.3.2：底栏去掉凸起加号（三个入口平分）；节次时间选择改成 Windows 同款
+# 两列滚轮（时/分）+ 确定取消。构建号 +1（上一个安装包是 1.3.1+8）。
+version: 1.3.2+9
 
 environment:
   sdk: ^3.13.3

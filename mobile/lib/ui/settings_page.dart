@@ -8,6 +8,7 @@
 library;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/cupertino.dart' show CupertinoPicker, FixedExtentScrollController;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -773,6 +774,69 @@ class _PeriodRowState extends State<_PeriodRow> {
     super.dispose();
   }
 
+  /// Windows 风格的时间选择：两列滚轮（时 / 分）+ 确定 / 取消。
+  Future<TimeOfDay?> _showWheelTimePicker(TimeOfDay initial) {
+    var hour = initial.hour.clamp(0, 23);
+    var minute = initial.minute.clamp(0, 59);
+    return showDialog<TimeOfDay>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('选择时间'),
+        content: SizedBox(
+          height: 180,
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: CupertinoPicker(
+                  key: const ValueKey('wheel-hour'),
+                  scrollController:
+                      FixedExtentScrollController(initialItem: hour),
+                  itemExtent: 40,
+                  onSelectedItemChanged: (i) => hour = i,
+                  children: <Widget>[
+                    for (var h = 0; h < 24; h++)
+                      Center(
+                        child: Text(h.toString().padLeft(2, '0'),
+                            style: const TextStyle(fontSize: 20)),
+                      ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: CupertinoPicker(
+                  key: const ValueKey('wheel-minute'),
+                  scrollController:
+                      FixedExtentScrollController(initialItem: minute),
+                  itemExtent: 40,
+                  onSelectedItemChanged: (i) => minute = i,
+                  children: <Widget>[
+                    for (var m = 0; m < 60; m++)
+                      Center(
+                        child: Text(m.toString().padLeft(2, '0'),
+                            style: const TextStyle(fontSize: 20)),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const ValueKey('wheel-ok'),
+            onPressed: () =>
+                Navigator.pop(ctx, TimeOfDay(hour: hour, minute: minute)),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 点开始/结束时间框弹出时间选择器（不再手输，杜绝乱填中文）。
   Future<void> _pickTime(bool isStart) async {
     final current = (isStart ? _start.text : _end.text).trim();
@@ -783,7 +847,7 @@ class _PeriodRowState extends State<_PeriodRow> {
     );
     final picked = widget.pickTime != null
         ? await widget.pickTime!(initial)
-        : await showTimePicker(context: context, initialTime: initial);
+        : await _showWheelTimePicker(initial);
     if (picked == null) return;
     final text =
         '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';

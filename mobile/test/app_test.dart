@@ -84,14 +84,9 @@ void main() {
     expect(find.text('添加课程'), findsOneWidget);
   });
 
-  testWidgets('底栏中间的「＋」新建备忘录并进编辑页', (tester) async {
+  testWidgets('底栏没有凸起的加号（v1.3.2 应凯森要求去掉）', (tester) async {
     await pumpApp(tester);
-    await tester.tap(find.byKey(const ValueKey('tab-quick-add')));
-    await tester.pumpAndSettle();
-    expect(find.text('编辑笔记'), findsOneWidget,
-        reason: '＋ 是快速新建备忘录，直接进编辑页');
-    // 落盘了
-    expect(store.notes().notes, hasLength(1));
+    expect(find.byKey(const ValueKey('tab-quick-add')), findsNothing);
   });
 
   testWidgets('设置页改了第 1 周周一，顶栏教学周圆牌立刻跟上（M7）', (tester) async {

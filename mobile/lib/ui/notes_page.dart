@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../notes_logic.dart';
 import '../store.dart';
+import 'glass.dart';
 
 class NotesPage extends StatefulWidget {
   const NotesPage({super.key, required this.store});
@@ -318,9 +319,11 @@ class _NoteEditPageState extends State<NoteEditPage> {
     final cs = Theme.of(context).colorScheme;
     if (n == null) {
       // 数据被别处删了之类的极端情况：给个提示直接回去。
-      return Scaffold(
-        appBar: AppBar(),
-        body: const Center(child: Text('备忘录不存在')),
+      return GlassBackdrop(
+        child: Scaffold(
+          appBar: AppBar(),
+          body: const Center(child: Text('备忘录不存在')),
+        ),
       );
     }
     final isTodo = n.isTodo;
@@ -334,7 +337,10 @@ class _NoteEditPageState extends State<NoteEditPage> {
           if (_dirty) _save();
         }
       },
-      child: Scaffold(
+      // 编辑页是独立路由：底下没有壳子的渐变背景，得自己垫一层，
+      // 否则透明的 Scaffold 会露出路由遮罩的黑底（v1.1.0 的 bug）。
+      child: GlassBackdrop(
+        child: Scaffold(
         key: const ValueKey('page-note-edit'),
         appBar: AppBar(
           title: Text(isTodo ? '编辑清单' : '编辑笔记'),
@@ -500,6 +506,7 @@ class _NoteEditPageState extends State<NoteEditPage> {
             ),
           ]),
         ],
+        ),
         ),
       ),
     );

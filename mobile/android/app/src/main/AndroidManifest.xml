@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 天气取数（Open-Meteo）要联网；debug/profile 清单里自带的权限不进正式包，
+         这里必须显式声明，否则 release 包完全没网。 -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="my_day_phone"
+        android:label="MyDay"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

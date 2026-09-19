@@ -1,8 +1,11 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../store.dart';
 import '../week.dart';
 import 'courses_page.dart';
+import 'glass.dart';
 import 'home_page.dart';
 import 'notes_page.dart';
 import 'settings_page.dart';
@@ -102,32 +105,53 @@ class _HomeShellState extends State<HomeShell> {
         api: widget.api,
       ),
     ];
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_title),
-        centerTitle: false,
-        actions: <Widget>[
-          Padding(
-            padding: const EdgeInsets.only(right: 14),
-            child: Center(child: _weekPill()),
-          ),
-        ],
-      ),
-      body: KeyedSubtree(
-        key: ValueKey<String>(_labels[_index]),
-        child: pages[_index],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (int i) => setState(() => _index = i),
-        destinations: <Widget>[
-          for (var i = 0; i < _labels.length; i++)
-            NavigationDestination(
-              icon: Icon(_icons[i]),
-              selectedIcon: Icon(_iconsOn[i]),
-              label: _labels[i],
+    // 整个壳子坐在渐变背景上，玻璃面板才能透出颜色（Liquid Glass）。
+    return GlassBackdrop(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        extendBody: true,
+        appBar: AppBar(
+          title: Text(_title),
+          centerTitle: false,
+          flexibleSpace: ClipRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              child: Container(
+                color: Theme.of(context)
+                    .colorScheme
+                    .surface
+                    .withValues(alpha: 0.25),
+              ),
             ),
-        ],
+          ),
+          actions: <Widget>[
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Center(child: _weekPill()),
+            ),
+          ],
+        ),
+        body: KeyedSubtree(
+          key: ValueKey<String>(_labels[_index]),
+          child: pages[_index],
+        ),
+        bottomNavigationBar: Glass(
+          blur: 24,
+          child: NavigationBar(
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            selectedIndex: _index,
+            onDestinationSelected: (int i) => setState(() => _index = i),
+            destinations: <Widget>[
+              for (var i = 0; i < _labels.length; i++)
+                NavigationDestination(
+                  icon: Icon(_icons[i]),
+                  selectedIcon: Icon(_iconsOn[i]),
+                  label: _labels[i],
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

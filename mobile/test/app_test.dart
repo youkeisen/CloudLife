@@ -102,12 +102,17 @@ void main() {
         reason: '圆牌文案应是「第 N 教学周」，实际：$pillText');
   });
 
-  test('深浅色两套主题都能构建，且底色不同', () {
+  test('深浅色两套主题都能构建，玻璃染色自适应', () {
     final light = buildTheme(Brightness.light);
     final dark = buildTheme(Brightness.dark);
     expect(light.useMaterial3, isTrue);
     expect(dark.useMaterial3, isTrue);
-    expect(light.scaffoldBackgroundColor, isNot(dark.scaffoldBackgroundColor));
+    // Liquid Glass：壳子透明，颜色来自底下的渐变背景
+    expect(light.scaffoldBackgroundColor, Colors.transparent);
+    expect(dark.scaffoldBackgroundColor, Colors.transparent);
+    expect(light.cardTheme.color, isNot(dark.cardTheme.color),
+        reason: '玻璃染色的深浅要跟主题走');
+    expect(light.dialogTheme.backgroundColor, isNot(dark.dialogTheme.backgroundColor));
   });
 }
 

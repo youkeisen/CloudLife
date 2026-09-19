@@ -66,11 +66,71 @@ ThemeData buildTheme(Brightness brightness) {
         : MyDayApp.seedLight,
     brightness: brightness,
   );
+  final dark = brightness == Brightness.dark;
+  // Liquid Glass：所有容器半透明 + 大圆角 + 无实体投影层级，
+  // 玻璃质感靠 Glass 组件的模糊与描边，主题只负责把底色调透。
+  const glassCardLight = Color(0x99FFFFFF);
+  const glassCardDark = Color(0x8C22252E);
+  final glassCard = dark ? glassCardDark : glassCardLight;
+  final outline = dark ? const Color(0x24FFFFFF) : const Color(0x66FFFFFF);
+
   return ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
-    scaffoldBackgroundColor: brightness == Brightness.dark
-        ? const Color(0xFF17181C)
-        : const Color(0xFFF4F5F8),
+    scaffoldBackgroundColor: Colors.transparent,
+    appBarTheme: AppBarTheme(
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      foregroundColor: scheme.onSurface,
+    ),
+    cardTheme: CardThemeData(
+      color: glassCard,
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: outline),
+      ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: dark ? const Color(0xE622252E) : const Color(0xF2FFFFFF),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: outline),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationThemeData(
+      filled: true,
+      fillColor: dark ? const Color(0x59FFFFFF) : const Color(0x66FFFFFF),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: outline),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: outline),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: scheme.primary, width: 1.4),
+      ),
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: dark ? const Color(0x661E2028) : const Color(0x66FFFFFF),
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      height: 66,
+      indicatorColor: scheme.primary.withValues(alpha: 0.16),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: dark ? const Color(0xD922252E) : const Color(0xE6202228),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    ),
+    dividerTheme: DividerThemeData(color: outline, thickness: 1),
   );
 }

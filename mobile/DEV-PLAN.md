@@ -28,10 +28,15 @@ JDK 21、Gradle 9.3.1。包名 `com.youkeisen.my_day_phone`。
 
 ## 发布流程（凯森手动点发布）
 
-1. 我跑 `flutter build apk --release`，把产出的 APK 放到他指定的目录（默认桌面临时目录）；
-2. 他在 GitHub 上 CloudLife 仓库 → Releases → Draft a new release，打 tag（如 `mobile-v0.1.0`）、
+**版本号规则（凯森 2026-09-19 定）**：三段式 主.次.修订，起步 1.0.0。
+修 bug → 修订 +1；加功能 → 次 +1 且修订清 0；主版本由凯森决定。
+pubspec.yaml 写成 `主.次.修订+构建号`，构建号每出一个安装包 +1。
+
+1. 改 pubspec.yaml 的 `version:`（比如修 bug 后 `1.0.1+2`、加功能后 `1.1.0+3`）；
+2. 我跑 `flutter build apk --release`，把产出的 APK 放到他指定的目录（默认 `D:\App\apk\`）；
+3. 他在 GitHub 上 CloudLife 仓库 → Releases → Draft a new release，打 tag（如 `mobile-v1.0.1`）、
    写上这版做了什么、把 APK 拖进附件，发布；
-3. 他自己在手机上装（首次要允许「安装未知来源应用」）。
+4. 他自己在手机上装（首次要允许「安装未知来源应用」）。
 
 ## 依赖（尽量少）
 
@@ -304,7 +309,59 @@ JDK 21、Gradle 9.3.1。包名 `com.youkeisen.my_day_phone`。
   换成虚构数据，并加了 `preset_guard_test.dart` 守卫——lib/ 源码里出现禁词（真实学校、
   课程、教室、人名、学号、城市）测试就挂。
 
+### v1.0.1（2026-09-19 13:53）：修「手机上添加不了城市」
+
+真机 bug：城市搜索必失败、天气也取不到。
+
+原因：Flutter 模板只在 debug/profile 清单里有 INTERNET 权限，`flutter run` 调试时一切正常，
+**但 release APK 根本没有联网权限**——天气取数、城市搜索全部失败。1.0.0 的包就是这样的。
+
+修复：
+1. `android/app/src/main/AndroidManifest.xml` 显式声明 `<uses-permission android:name=
+   "android.permission.INTERNET"/>`（顺便把桌面显示名从包名 my_day_phone 改成 MyDay）。
+2. 加 `test/packaging_guard_test.dart`：主清单必须含 INTERNET 权限、应用名不能是包名，
+   防止再悄悄丢掉。
+3. 版本号按规矩：修 bug → 1.0.0+1 升 **1.0.1+2**。
+
+验证：252 个测试全绿，analyze 无问题；重新出包 `D:\App\apk\MyDay-手机版-v1.0.1.apk`。
+
+### v1.1.0（2026-09-19 15:35）：Liquid Glass「液态玻璃」整体换肤
+
+网页版（v1.1.0，APP_VERSION 已升）和手机版同步应用 macOS Tahoe 风格的玻璃质感，
+**只换视觉，不动任何结构 / 交互 / 文案**（验收依据：全部既有测试原样通过）。
+
+- 网页版 `app/static/style.css` 末尾追加 Liquid Glass 层：body 彩色渐变底、
+  侧边栏/顶栏/卡片/弹窗/按钮/输入框/列表行/标签全部半透明磨砂
+  （backdrop-filter blur+saturation）、1px 高光描边（inset box-shadow）、柔和外投影、
+  大圆角（12-20px）；遮罩加模糊；深浅色各一套玻璃参数（`--glass*` 变量）。
+  顺手修了 test_stage9 的一个测试基建 bug：`r.stdout[-1500:]` 在 stdout 为 None 的
+  环境里会 TypeError（assertEqual 的消息是先求值的），改成 `r.stdout or r.stderr or ''`。
+  **286 个用例 0 失败 0 错误，冒烟 22/22。**
+- 手机版：新增 `lib/ui/glass.dart`（Glass = ClipRRect + BackdropFilter + 渐变染色 +
+  高光描边 + 柔影；GlassBackdrop = 页面底下的彩色渐变）；`buildTheme` 全面玻璃化
+  （Card/Dialog/Input/NavigationBar/SnackBar 全部半透明大圆角、AppBar 透明）；
+  HomeShell 换成 GlassBackdrop 渐变壳 + extendBody（内容从玻璃底栏下滑过）+
+  顶栏/底栏真·背景模糊。页面结构与文案零改动。
+  **252 个测试全绿，analyze 无问题**（app_test 里「底色不同」的断言按新设计改成
+  「壳子透明 + 玻璃染色随主题」）。
+- 版本号按规矩：加功能 → 1.0.1 升 **1.1.0**（修订清 0），构建号 +1 → 1.1.0+3；
+  网页版 APP_VERSION 同步 1.0.0 → 1.1.0。
+
+### v1.1.1（2026-09-19 16:40）：修「浅色模式进编辑页变黑底」
+
+真机 bug：设置选浅色，点进「编辑清单 / 编辑笔记」整页变黑。
+
+原因：玻璃化把 Scaffold 底色调成透明（颜色靠壳子的渐变背景透出来），但编辑页是
+**独立推入的路由**，底下没有壳子的渐变——透明底直接露出路由遮罩的黑。
+
+修复：`notes_page.dart` 的编辑页（含备忘录不存在的兜底分支）自己套一层
+`GlassBackdrop` 渐变背景；加回归测试 `editor_backdrop_test.dart`（2 个用例：
+浅色/深色进编辑页都必须有背景垫层）。
+版本号按规矩：修 bug → 1.1.0 升 **1.1.1+4**。
+验证：254 个测试全绿，analyze 无问题。
+
 ### M9 打包与真机验收（APK 已出，真机验收待凯森）
+
 - `flutter build apk --release` 成功：51.8 MB，产物在
   `build\app\outputs\flutter-apk\app-release.apk`，并拷贝到 **`D:\App\apk\MyDay-手机版-v1.0.0.apk`**。
   校验过 zip 里的 classes.dex、三个架构的 libapp/libdartjni/libflutter、

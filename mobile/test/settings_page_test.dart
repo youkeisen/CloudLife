@@ -96,8 +96,8 @@ void main() {
     expect(find.text('天气'), findsOneWidget);
     expect(find.text('作息与节次（全部自定义）'), findsOneWidget);
     expect(find.text('数据'), findsOneWidget);
-    // v1.3.6 起：称呼 / 学期名 / 校区三个输入框按凯森要求删掉了
-    expect(find.byKey(const ValueKey('s-name')), findsNothing);
+    // v1.4.4 起：称呼输入框按凯森要求加回来了；学期名/校区仍是删掉状态
+    expect(find.byKey(const ValueKey('s-name')), findsOneWidget);
     expect(find.byKey(const ValueKey('s-semester')), findsNothing);
     expect(find.byKey(const ValueKey('s-campus')), findsNothing);
   });

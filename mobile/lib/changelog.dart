@@ -5,6 +5,12 @@ library;
 /// (版本号, 变更列表)
 const List<(String, List<String>)> kChangelog = <(String, List<String>)>[
   (
+    '1.4.4',
+    <String>[
+      '设置页加回「称呼」：填了之后首页问候语会带上你的名字',
+    ],
+  ),
+  (
     '1.4.3',
     <String>[
       '课表支持合并连堂：点「合并」进入选择模式，点选同一节课的 2~3 个相邻格子合成一节连堂（适合导入后散开的课）',

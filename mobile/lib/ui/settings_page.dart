@@ -423,6 +423,13 @@ class _SettingsPageState extends State<SettingsPage> {
             open: _basicOpen,
             onToggle: () { _basicOpen = !_basicOpen; _toggleCollapse('basic'); },
             children: <Widget>[
+          _field('称呼', '凯森 v1.4.4 要求加回来：显示在首页问候语里',
+              TextFormField(
+                key: const ValueKey('s-name'),
+                initialValue: _s.displayName,
+                decoration: const InputDecoration(hintText: '怎么称呼你'),
+                onChanged: (v) => _save((s) => s.displayName = v),
+              )),
           _field('第 1 周周一日期', '必填，用来算今天是第几教学周',
               InkWell(
                 key: const ValueKey('s-week1'),

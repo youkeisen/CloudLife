@@ -1,5 +1,5 @@
 name: my_day_phone
-description: "A new Flutter project."
+description: "MyDay 手机版：课表、天气、备忘录，数据只存在本机。"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -34,6 +34,20 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+
+  # 拼路径、取应用私有目录（数据存在手机本机，不上云）
+  path: ^1.9.0
+  path_provider: ^2.1.4
+
+  # 备份 zip 的打包与解析（M7）：和电脑版 backup.py 用同一种结构；
+  # 也用来解 xlsx（M8，xlsx 本身就是 zip）
+  archive: ^3.6.1
+
+  # xlsx 里的工作表 XML（M8）
+  xml: ^6.5.0
+
+  # 从备份还原时选 zip 文件（M7）；测试里不碰它，靠注入假选择器
+  file_picker: ^8.1.2
 
 dev_dependencies:
   flutter_test:

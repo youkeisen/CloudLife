@@ -1,0 +1,225 @@
+// 数据模型的测试：默认值必须为空、序列化必须往返无损、
+// 而且认不出的字段不能吃掉（这是和电脑版备份互通的关键）。
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_day_phone/models.dart';
+
+void main() {
+  group('默认值（零预置原则）', () {
+    test('全新的设置里一个字真东西都没有', () {
+      final s = Settings.initial();
+      expect(s.displayName, '');
+      expect(s.semesterName, '');
+      expect(s.week1Monday, '');
+      expect(s.campus, '');
+      expect(s.periods, isEmpty, reason: '节次必须空着，由用户自己建');
+      expect(s.weatherCities, isEmpty, reason: '不许预置城市');
+      expect(s.weatherCity.isSet, isFalse);
+      expect(s.weekStartsOn, 1);
+      expect(s.refreshMinutes, 30);
+      expect(s.theme, 'system');
+    });
+
+    test('设置 JSON 的键和电脑版一字不差', () {
+      // 抄自电脑版 app/store.py 的 DEFAULT_SETTINGS
+      final json = Settings.initial().toJson();
+      expect(json.keys.toSet(), <String>{
+        'version',
+        'displayName',
+        'semesterName',
+        'week1Monday',
+        'weekStartsOn',
+        'campus',
+        'periods',
+        'weatherCity',
+        'weatherCities',
+        'refreshMinutes',
+        'theme',
+      });
+      final city = json['weatherCity'] as Map;
+      expect(city.keys.toSet(), <String>{'name', 'latitude', 'longitude', 'timezone'});
+      expect(city['timezone'], 'Asia/Shanghai');
+      expect(city['latitude'], isNull);
+      expect(city['name'], '');
+    });
+
+    test('课程 / 备忘录 / 天气缓存的默认键', () {
+      expect(Courses().toJson().keys.toSet(), <String>{'version', 'weeks'});
+      expect(Notes().toJson().keys.toSet(), <String>{'version', 'notes'});
+      final cache = WeatherCache().toJson();
+      expect(cache.keys.toSet(), <String>{'version', 'fetchedAt', 'city', 'payload'});
+      expect((cache['city'] as Map).keys.toSet(), <String>{'name', 'latitude', 'longitude'},
+          reason: '缓存里的城市和电脑版一样不带 timezone');
+      expect(cache['payload'], isNull);
+    });
+  });
+
+  group('序列化往返', () {
+    test('设置里的节次和地点能存能读', () {
+      final s = Settings(
+        displayName: '小明',
+        week1Monday: '2026-08-31',
+        weekStartsOn: 7,
+        periods: <Period>[
+          Period(id: 'p1', label: '第 1 节', start: '08:10', end: '08:55'),
+          Period(id: 'p2', label: '中午1', start: '12:20', end: '13:05'),
+        ],
+        weatherCity: City(name: '示例市', latitude: 30.0, longitude: 120.0),
+        weatherCities: <Place>[
+          Place(id: 'pl1', name: '示例市', admin: '示例省', latitude: 30.0, longitude: 120.0),
+        ],
+      );
+      final back = Settings.fromJson(s.toJson());
+      expect(back.displayName, '小明');
+      expect(back.week1Monday, '2026-08-31');
+      expect(back.weekStartsOn, 7);
+      expect(back.periods.length, 2);
+      expect(back.periods[1].label, '中午1');
+      expect(back.periods[0].start, '08:10');
+      expect(back.weatherCity.name, '示例市');
+      expect(back.weatherCity.latitude, 30.0);
+      expect(back.weatherCities.single.admin, '示例省');
+      expect(back.weatherCities.single.label, '示例市 · 示例省');
+    });
+
+    test('课程按周存取，周次键在 JSON 里是字符串', () {
+      final c = Courses();
+      c.setWeek(3, <Lesson>[
+        Lesson(
+          id: 'c1',
+          day: 1,
+          slot: 'p1',
+          spanEnd: 'p2',
+          name: '示例课程',
+          location: 'A-101',
+          teacher: '李老师',
+        ),
+      ]);
+      final json = c.toJson();
+      expect((json['weeks'] as Map).keys.toSet(), <String>{'3'});
+      final back = Courses.fromJson(json);
+      expect(back.week(3).single.name, '示例课程');
+      expect(back.week(3).single.spanEnd, 'p2');
+      expect(back.week(4), isEmpty);
+      expect(back.usedWeeks, <int>[3]);
+    });
+
+    test('备忘录的清单项和标签', () {
+      final n = Note(
+        id: 'n1',
+        title: '作业',
+        type: NoteType.todo,
+        items: <NoteItem>[
+          NoteItem(text: '写作业', done: true),
+          NoteItem(text: '交作业'),
+        ],
+        tags: <String>['学习', '杂事'],
+        pinned: true,
+      );
+      final back = Note.fromJson(n.toJson());
+      expect(back.isTodo, isTrue);
+      expect(back.itemsTotal, 2);
+      expect(back.itemsDone, 1);
+      expect(back.tags, <String>['学习', '杂事']);
+      expect(back.pinned, isTrue);
+      expect(back.archived, isFalse);
+    });
+
+    test('认不出的字段会被留下来——不会把另一边的字段吃掉', () {
+      final json = <String, dynamic>{
+        'version': 1,
+        'displayName': '',
+        'semesterName': '',
+        'week1Monday': '',
+        'weekStartsOn': 1,
+        'campus': '',
+        'periods': <dynamic>[],
+        'weatherCity': <String, dynamic>{'name': '', 'latitude': null, 'longitude': null},
+        'weatherCities': <dynamic>[],
+        'refreshMinutes': 30,
+        'theme': 'system',
+        // 假设电脑版以后加了这些字段
+        'futureField': '别弄丢我',
+        'anotherOne': 42,
+      };
+      final back = Settings.fromJson(json).toJson();
+      expect(back['futureField'], '别弄丢我');
+      expect(back['anotherOne'], 42);
+    });
+
+    test('笔记里的清单项编号、lesson 的额外字段同样保留', () {
+      final lesson = Lesson.fromJson(<String, dynamic>{
+        'id': 'c1',
+        'day': 1,
+        'slot': 'p1',
+        'futureColor': 'red',
+      });
+      expect(lesson.toJson()['futureColor'], 'red');
+      expect(lesson.spanEnd, '');
+      expect(lesson.name, '');
+
+      final item = NoteItem.fromJson(<String, dynamic>{'text': 'a', 'done': true, 'x': 1});
+      expect(item.toJson()['x'], 1);
+    });
+
+    test('字段类型不对时不崩，能给个合理默认', () {
+      final s = Settings.fromJson(<String, dynamic>{
+        'periods': 'not a list',
+        'weekStartsOn': 'abc',
+        'weatherCities': null,
+        'refreshMinutes': '60',
+      });
+      expect(s.periods, isEmpty);
+      expect(s.weekStartsOn, 1);
+      expect(s.weatherCities, isEmpty);
+      expect(s.refreshMinutes, 60, reason: '字符串数字也要认');
+    });
+  });
+
+  group('备忘录摘要（列表第二行用）', () {
+    test('清单型显示完成进度', () {
+      final n = Note(
+        id: 'n',
+        type: NoteType.todo,
+        items: <NoteItem>[
+          NoteItem(text: 'a', done: true),
+          NoteItem(text: 'b'),
+        ],
+      );
+      expect(n.summary, '1/2 项完成');
+    });
+
+    test('空清单不硬凑文案', () {
+      expect(Note(id: 'n', type: NoteType.todo).summary, '');
+    });
+
+    test('笔记型取正文第一行', () {
+      expect(Note(id: 'n', body: '第一行\n第二行').summary, '第一行');
+    });
+
+    test('类型名字', () {
+      expect(NoteType.label(NoteType.text), '笔记');
+      expect(NoteType.label(NoteType.todo), '清单');
+    });
+  });
+
+  group('地点与当前城市', () {
+    test('地点转当前城市时不带 id/省份', () {
+      final place = Place(
+        id: 'pl1',
+        name: '合肥',
+        admin: '示例省',
+        latitude: 31.86,
+        longitude: 117.28,
+      );
+      final city = place.toCity().toJson();
+      expect(city.keys.toSet(), <String>{'name', 'latitude', 'longitude', 'timezone'});
+      expect(city['name'], '合肥');
+    });
+
+    test('坐标缺失时城市算「没设置」', () {
+      expect(City(name: '示例市').isSet, isFalse);
+      expect(City().isEmpty, isTrue);
+      expect(City(name: '示例市', latitude: 31.1, longitude: 118.1).isSet, isTrue);
+    });
+  });
+}

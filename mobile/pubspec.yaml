@@ -16,9 +16,9 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-# 1.4.4：设置页加回「称呼」（首页问候语会用）。
-# 构建号 +1（上一个安装包是 1.4.3+19）。
-version: 1.4.4+20
+# 1.5.0：备忘录定时提醒（flutter_local_notifications，非精确闹钟）；
+# 应用名改 CloudLife。构建号 +1（上一个安装包是 1.4.4+20）。
+version: 1.5.0+21
 
 environment:
   sdk: ^3.13.3
@@ -53,6 +53,9 @@ dependencies:
   file_picker: ^8.1.2
   geolocator: ^14.0.2
   syncfusion_flutter_pdf: ^33.2.13
+  # 备忘录定时提醒（v1.5.0）
+  flutter_local_notifications: ^17.2.4
+  timezone: ^0.9.4
 
 dev_dependencies:
   flutter_test:

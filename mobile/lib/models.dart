@@ -506,6 +506,7 @@ class Note {
     this.archived = false,
     this.createdAt = '',
     this.updatedAt = '',
+    this.remindAt = '',
     Map<String, dynamic>? extra,
   })  : items = items ?? <NoteItem>[],
         tags = tags ?? <String>[],
@@ -521,6 +522,9 @@ class Note {
   bool archived;
   String createdAt;
   String updatedAt;
+
+  /// 定时提醒的 ISO 时间；空 = 不提醒（凯森 v1.5.0 要求的定时通知）。
+  String remindAt;
   Map<String, dynamic> extra;
 
   static const Set<String> known = {
@@ -534,6 +538,7 @@ class Note {
     'archived',
     'createdAt',
     'updatedAt',
+    'remindAt',
   };
 
   bool get isTodo => type == NoteType.todo;
@@ -561,6 +566,7 @@ class Note {
         archived: asBool(json['archived']),
         createdAt: asString(json['createdAt']),
         updatedAt: asString(json['updatedAt']),
+        remindAt: asString(json['remindAt']),
         extra: extraKeys(json, known),
       );
 
@@ -576,6 +582,7 @@ class Note {
         'archived': archived,
         'createdAt': createdAt,
         'updatedAt': updatedAt,
+        'remindAt': remindAt,
       };
 
   Note copyWith({

@@ -10,8 +10,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import '../notification_service.dart';
 import '../notes_logic.dart';
 import '../store.dart';
+import 'wheel_time_picker.dart';
 import 'glass.dart';
 
 class NotesPage extends StatefulWidget {
@@ -274,6 +276,67 @@ class _NoteEditPageState extends State<NoteEditPage> {
     _saveNow();
   }
 
+  // ---------- 定时提醒 ----------
+
+  String _remindText() {
+    final raw = _note?.remindAt ?? '';
+    if (raw.isEmpty) return '';
+    final dt = DateTime.tryParse(raw);
+    if (dt == null) return '';
+    return '${dt.month}月${dt.day}日 '
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// 选提醒时间：先挑日期，再用 Windows 同款滚轮挑时分。
+  Future<void> _pickRemindAt() async {
+    final n = _note;
+    if (n == null) return;
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: now.add(const Duration(days: 365 * 3)),
+      helpText: '选提醒日期',
+    );
+    if (date == null) return;
+    if (!mounted) return;
+    final time = await showWheelTimePicker(
+        context, TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))));
+    if (time == null) return;
+    final when =
+        DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    if (!when.isAfter(now)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+              content: Text('要选未来的时间'), duration: Duration(seconds: 2)));
+      }
+      return;
+    }
+    n.remindAt = when.toIso8601String();
+    await NotificationService.scheduleFor(n.id, n.title, when);
+    _saveNow();
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+            content: Text(
+                '已设提醒：${when.month}月${when.day}日 ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}'),
+            duration: const Duration(seconds: 2)));
+    }
+  }
+
+  /// 清掉提醒。
+  Future<void> _clearRemindAt() async {
+    final n = _note;
+    if (n == null) return;
+    n.remindAt = '';
+    await NotificationService.cancel(n.id);
+    _saveNow();
+  }
+
   void _deleteNote() {
     final n = _note;
     if (n == null) return;
@@ -295,6 +358,8 @@ class _NoteEditPageState extends State<NoteEditPage> {
               _dirty = false;
               _notes.notes.removeWhere((x) => x.id == n.id);
               widget.store.saveNotes(_notes);
+              // 删了备忘录就把它的提醒也撤了
+              NotificationService.cancel(n.id);
               // 先抓住 messenger：这页自己也要 pop，之后 context 就不能用了。
               final messenger = ScaffoldMessenger.of(context);
               Navigator.of(ctx).pop(); // 关弹窗
@@ -390,6 +455,28 @@ class _NoteEditPageState extends State<NoteEditPage> {
             onChanged: (v) {
               if (v != null && v != n.type) _setType(v);
             },
+          ),
+          const SizedBox(height: 12),
+          // 定时提醒（凯森 v1.5.0 要求）：点一下选日期 + 时间，设了以后系统会推通知
+          InkWell(
+            key: const ValueKey('field-remind'),
+            onTap: _pickRemindAt,
+            child: InputDecorator(
+              isEmpty: n.remindAt.isEmpty,
+              decoration: InputDecoration(
+                labelText: '定时提醒',
+                hintText: '不提醒',
+                suffixIcon: n.remindAt.isEmpty
+                    ? const Icon(Icons.alarm_add, size: 20)
+                    : IconButton(
+                        key: const ValueKey('btn-clear-remind'),
+                        tooltip: '取消提醒',
+                        icon: const Icon(Icons.alarm_off, size: 20),
+                        onPressed: _clearRemindAt,
+                      ),
+              ),
+              child: Text(_remindText()),
+            ),
           ),
           const SizedBox(height: 16),
           if (!isTodo)

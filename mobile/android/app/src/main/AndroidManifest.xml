@@ -5,8 +5,12 @@
     <!-- 定位添加地点用（模糊定位优先，精确定位可选） -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <!-- 备忘录的定时提醒通知（Android 13+ 要运行时授权，见 NotificationService） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <application
-        android:label="云生活"
+        android:label="CloudLife"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

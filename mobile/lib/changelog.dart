@@ -5,6 +5,13 @@ library;
 /// (版本号, 变更列表)
 const List<(String, List<String>)> kChangelog = <(String, List<String>)>[
   (
+    '1.5.0',
+    <String>[
+      '备忘录定时提醒：编辑页可设提醒日期和时间，到点系统推通知（删除备忘录或清掉提醒会自动撤销）',
+      '应用名改为 CloudLife（桌面图标名 / GitHub 同步改）',
+    ],
+  ),
+  (
     '1.4.4',
     <String>[
       '设置页加回「称呼」：填了之后首页问候语会带上你的名字',

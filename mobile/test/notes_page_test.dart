@@ -56,6 +56,11 @@ void main() {
           as Map<String, dynamic>;
 
   Future<void> pumpApp(WidgetTester tester) async {
+    // 编辑页加了「定时提醒」行后更高了，测试视口放大到手机常见尺寸，
+    // 不然底部工具栏（置顶/归档/删除）会被挤到屏外（v1.5.0）。
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(MyDayApp(store: store));
     await tester.pumpAndSettle();
     // v1.3.0 起：备忘录收进「功能」页，路径是 首页 → 功能 → 备忘录

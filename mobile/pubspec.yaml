@@ -16,10 +16,9 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-# 1.3.3：修「设置好时间后看不到时间」——旧数据里手输时代的乱值（如 "("），
-# 打开设置页时清掉显示占位提示；时间选择对话框禁止点外面关闭（防白选）。
-# 构建号 +1（上一个安装包是 1.3.2+9）。
-version: 1.3.3+10
+# 1.3.4：修节次时间框显示不下——去掉框内时钟图标、收紧内边距、标签列让宽，
+# 「08:10」能完整显示。构建号 +1（上一个安装包是 1.3.3+10）。
+version: 1.3.4+11
 
 environment:
   sdk: ^3.13.3

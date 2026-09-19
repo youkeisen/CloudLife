@@ -878,12 +878,16 @@ class _PeriodRowState extends State<_PeriodRow> {
       controller: controller,
       readOnly: true,
       showCursor: false,
+      textAlign: TextAlign.center,
+      style: const TextStyle(fontSize: 14),
       onTap: () => _pickTime(isStart),
       decoration: InputDecoration(
-        hintText: isStart ? '开始时间' : '结束时间',
+        hintText: isStart ? '开始' : '结束',
         isDense: true,
-        suffixIcon: Icon(Icons.schedule,
-            size: 18, color: Theme.of(context).colorScheme.outline),
+        // 不放后缀图标、收紧内边距：时间是「08:10」五位字符，宽度必须留够，
+        // 不然挤得什么都显示不出来（凯森 v1.3.2 反馈）
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
       ),
     );
   }
@@ -895,11 +899,17 @@ class _PeriodRowState extends State<_PeriodRow> {
       child: Row(
         children: <Widget>[
           Expanded(
-            flex: 3,
+            flex: 2,
             child: TextField(
               key: ValueKey('s-period-label-${widget.period.id}'),
               controller: _label,
-              decoration: const InputDecoration(hintText: '节次名', isDense: true),
+              style: const TextStyle(fontSize: 14),
+              decoration: const InputDecoration(
+                hintText: '节次名',
+                isDense: true,
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+              ),
             ),
           ),
           const SizedBox(width: 6),

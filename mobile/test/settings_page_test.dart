@@ -116,6 +116,18 @@ void main() {
     expect(find.text('第 1 周周一日期'), findsOneWidget);
   });
 
+  testWidgets('卡片收放状态重进后保留（v1.4.0）', (tester) async {
+    await pumpPage(tester);
+    // 收起基本卡
+    await tester.tap(find.byKey(const ValueKey('s-basic-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('第 1 周周一日期'), findsNothing);
+
+    // 模拟重进：重新泵页面，收起状态要记着
+    await pumpPage(tester);
+    expect(find.text('第 1 周周一日期'), findsNothing);
+  });
+
   testWidgets('选第 1 周周一日期：日期选择器 → 落盘', (tester) async {
     await pumpPage(tester);
     await tester.tap(find.byKey(const ValueKey('s-week1')));

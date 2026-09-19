@@ -16,9 +16,11 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-# 1.3.8：定位在安卓上强制走系统定位服务（部分国产机融合定位会卡死超时）。
-# 构建号 +1（上一个安装包是 1.3.7+14）。
-version: 1.3.8+15
+# 1.4.0：设置页卡片收放状态记到设置文件（重进不丢）；天气 24 小时图高度修好不裁字；
+# 课程页三个按钮收进一行 + 课表支持双指缩放（最小缩到完整看到整张表）；
+# 定位反查改 BigDataCloud 主路（国内可直连）+ Nominatim 兜底，超时放宽 20 秒。
+# 构建号 +1（上一个安装包是 1.3.8+15）。
+version: 1.4.0+16
 
 environment:
   sdk: ^3.13.3

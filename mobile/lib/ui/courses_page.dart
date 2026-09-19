@@ -570,25 +570,40 @@ class _CoursesPageState extends State<CoursesPage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
           child: Wrap(
-            spacing: 8,
+            spacing: 6,
             children: <Widget>[
               OutlinedButton.icon(
                 key: const ValueKey('btn-add-course'),
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                ),
                 onPressed: () => _openEditor(),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('添加课程'),
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('添加课程',
+                    style: TextStyle(fontSize: 13)),
               ),
               OutlinedButton.icon(
                 key: const ValueKey('btn-copy-week'),
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                ),
                 onPressed: () => _openCopyDialog(lessons.length),
-                icon: const Icon(Icons.copy_all_outlined, size: 18),
-                label: const Text('复制整周'),
+                icon: const Icon(Icons.copy_all_outlined, size: 16),
+                label: const Text('复制整周',
+                    style: TextStyle(fontSize: 13)),
               ),
               OutlinedButton.icon(
                 key: const ValueKey('btn-clear-week'),
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                ),
                 onPressed: _confirmClear,
-                icon: const Icon(Icons.delete_outline, size: 18),
-                label: const Text('清空本周'),
+                icon: const Icon(Icons.delete_outline, size: 16),
+                label: const Text('清空本周',
+                    style: TextStyle(fontSize: 13)),
               ),
             ],
           ),
@@ -769,18 +784,30 @@ class _CoursesPageState extends State<CoursesPage> {
       );
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    // 缩放：双指捏合缩小到「刚好完整看到整张表」，放大看细节（凯森 v1.3.8 反馈）。
+    // 缩小时列宽跟着缩，横向不再需要滚动条。
+    final tableW = _labelW + _dayW * days.length;
+    return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      child: SizedBox(
-        width: _labelW + _dayW * days.length,
-        child: SingleChildScrollView(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[labelColumn, ...days.map(dayColumn)],
+      child: LayoutBuilder(builder: (context, cons) {
+        final fit = cons.maxWidth.isFinite && tableW > 0
+            ? cons.maxWidth / tableW
+            : 1.0;
+        return InteractiveViewer(
+          constrained: false,
+          minScale: fit.clamp(0.4, 1.0),
+          maxScale: 2.5,
+          boundaryMargin: const EdgeInsets.all(24),
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: tableW,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[labelColumn, ...days.map(dayColumn)],
+            ),
           ),
-        ),
-      ),
+        );
+      }),
     );
   }
 }

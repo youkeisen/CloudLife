@@ -118,20 +118,20 @@ class WeatherApi {
   final String geoBase;
   final Duration timeout;
 
-  Future<Map<String, dynamic>> httpGetJson(Uri url, {String? userAgent}) async {
-    final client = HttpClient()..connectionTimeout = timeout;
+  Future<Map<String, dynamic>> httpGetJson(Uri url,
+      {String? userAgent, Duration? timeout}) async {
+    final t = timeout ?? this.timeout;
+    final client = HttpClient()..connectionTimeout = t;
     if (userAgent != null) client.userAgent = userAgent;
     try {
-      final request = await client.getUrl(url).timeout(timeout);
-      final response = await request.close().timeout(timeout);
+      final request = await client.getUrl(url).timeout(t);
+      final response = await request.close().timeout(t);
       if (response.statusCode != 200) {
-        await response.drain<void>().timeout(timeout);
+        await response.drain<void>().timeout(t);
         throw WeatherApiException('HTTP ${response.statusCode}');
       }
-      final text = await response
-          .transform(utf8.decoder)
-          .join()
-          .timeout(timeout);
+      final text =
+          await response.transform(utf8.decoder).join().timeout(t);
       final obj = jsonDecode(text);
       if (obj is Map) {
         return obj.map((k, v) => MapEntry(k.toString(), v));
@@ -194,7 +194,43 @@ class WeatherApi {
 
   /// 用坐标反查地名（Nominatim 免费服务，给「定位添加地点」用）。
   /// 拿不到像样的城市名就抛 WeatherApiException。
+  /// 坐标 → 城市名。主路走 BigDataCloud 的免费反查（国内可直连、不用 key），
+  /// 失败再试 Nominatim（国外稳，国内常连不上导致 8 秒超时——凯森 v1.3.8 反馈）。
   Future<CitySuggestion> reverseGeocode(double latitude, double longitude) async {
+    try {
+      return await _reverseBigDataCloud(latitude, longitude);
+    } catch (_) {
+      // 换备路重试
+    }
+    return _reverseNominatim(latitude, longitude);
+  }
+
+  Future<CitySuggestion> _reverseBigDataCloud(double latitude, double longitude) async {
+    final uri = Uri.parse(
+        'https://api.bigdatacloud.net/data/reverse-geocode-client')
+        .replace(queryParameters: <String, String>{
+      'latitude': '$latitude',
+      'longitude': '$longitude',
+      'localityLanguage': 'zh',
+    });
+    final raw = await httpGetJson(uri, timeout: const Duration(seconds: 20));
+    final name = <String>[
+      asString(raw['cityName']),
+      asString(raw['locality']),
+      asString(raw['principalSubdivision']),
+    ].firstWhere((s) => s.isNotEmpty, orElse: () => '');
+    if (name.isEmpty) {
+      throw WeatherApiException('没认出城市名');
+    }
+    return CitySuggestion(
+      name: name,
+      admin: asString(raw['principalSubdivision']),
+      latitude: latitude,
+      longitude: longitude,
+    );
+  }
+
+  Future<CitySuggestion> _reverseNominatim(double latitude, double longitude) async {
     final uri = Uri.parse('https://nominatim.openstreetmap.org/reverse')
         .replace(queryParameters: <String, String>{
       'format': 'jsonv2',
@@ -204,7 +240,8 @@ class WeatherApi {
       'zoom': '10',
     });
     final raw = await httpGetJson(uri,
-        userAgent: 'MyDay/1.x (personal app)');
+        userAgent: 'MyDay/1.x (personal app)',
+        timeout: const Duration(seconds: 20));
     final address = asMap(raw['address']);
     final name = <String>[
       asString(address['city']),

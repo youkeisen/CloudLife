@@ -410,7 +410,7 @@ class _SettingsPageState extends State<SettingsPage> {
             key: const ValueKey('s-basic-card'),
             toggleKey: 's-basic-toggle',
             open: _basicOpen,
-            onToggle: () => setState(() => _basicOpen = !_basicOpen),
+            onToggle: () { _basicOpen = !_basicOpen; _toggleCollapse('basic'); },
             children: <Widget>[
           _field('第 1 周周一日期', '必填，用来算今天是第几教学周',
               InkWell(
@@ -451,7 +451,7 @@ class _SettingsPageState extends State<SettingsPage> {
             key: const ValueKey('s-weather-card'),
             toggleKey: 's-weather-toggle',
             open: _weatherOpen,
-            onToggle: () => setState(() => _weatherOpen = !_weatherOpen),
+            onToggle: () { _weatherOpen = !_weatherOpen; _toggleCollapse('weather'); },
             summary: _s.weatherCities.isEmpty ? '还没设' : '${_s.weatherCities.length} 个地点',
             children: <Widget>[
           _rowTitle('我的地点', '选中即切换，右侧 × 移除'),
@@ -549,7 +549,7 @@ class _SettingsPageState extends State<SettingsPage> {
             key: const ValueKey('s-periods-card'),
             toggleKey: 's-periods-toggle',
             open: _periodsOpen,
-          onToggle: () => setState(() => _periodsOpen = !_periodsOpen),
+          onToggle: () { _periodsOpen = !_periodsOpen; _toggleCollapse('periods'); },
           summary: _s.periods.isEmpty ? '还没设' : '${_s.periods.length} 个节次',
           children: <Widget>[
           if (_s.periods.isEmpty)
@@ -585,7 +585,7 @@ class _SettingsPageState extends State<SettingsPage> {
             key: const ValueKey('s-data-card'),
             toggleKey: 's-data-toggle',
             open: _dataOpen,
-            onToggle: () => setState(() => _dataOpen = !_dataOpen),
+            onToggle: () { _dataOpen = !_dataOpen; _toggleCollapse('data'); },
             children: <Widget>[
           _dataLine(
             '手动备份',
@@ -622,12 +622,41 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  /// 作息与节次卡片默认收起（列表长），点标题 + 小三角展开。
-  bool _periodsOpen = false;
-  // 其余三张卡默认展开，需要时点标题收起
-  bool _basicOpen = true;
-  bool _weatherOpen = true;
-  bool _dataOpen = true;
+  /// 卡片收放状态记在设置文件的 extra.ui 里，重进不丢（凯森 v1.3.7 反馈）。
+  /// 作息与节次默认收起（列表长），其余默认展开。
+  late bool _periodsOpen = _collapseFlag('periods', false);
+  late bool _basicOpen = _collapseFlag('basic', true);
+  late bool _weatherOpen = _collapseFlag('weather', true);
+  late bool _dataOpen = _collapseFlag('data', true);
+
+  bool _collapseFlag(String key, bool dflt) {
+    final ui = asMap(widget.store.settings().extra['ui']);
+    final v = ui[key];
+    return v is bool ? v : dflt;
+  }
+
+  void _toggleCollapse(String key) {
+    setState(() {});
+    _save((s) {
+      final ui = Map<String, dynamic>.from(asMap(s.extra['ui']));
+      ui[key] = openOf(key);
+      s.extra['ui'] = ui;
+    });
+  }
+
+  bool openOf(String key) {
+    switch (key) {
+      case 'basic':
+        return _basicOpen;
+      case 'weather':
+        return _weatherOpen;
+      case 'data':
+        return _dataOpen;
+      case 'periods':
+        return _periodsOpen;
+    }
+    return true;
+  }
 
   Widget _cardCollapsible(
     BuildContext context,

@@ -433,7 +433,8 @@ class _WeatherPageState extends State<WeatherPage> {
               const SizedBox(height: 10),
               SizedBox(
                 key: const ValueKey('wx-hours'),
-                height: 96,
+                // 116：温度字 + 柱子 + 底部时间字刚好放满，96 会把时间字裁掉一半
+                height: 116,
                 child: hours.isEmpty
                     ? Text('没有小时数据', style: TextStyle(fontSize: 12, color: cs.outline))
                     : ListView.builder(

@@ -168,3 +168,94 @@ table.tt td.slot{width:92px;background:var(--soft);color:var(--muted);text-align
   background:rgba(28,31,36,.92);color:#fff;padding:8px 16px;border-radius:20px;font-size:12px;
   opacity:0;transition:opacity .25s;pointer-events:none;z-index:30}
 .toast.on{opacity:1}
+
+/* ============================================================
+   Liquid Glass（macOS Tahoe 风格）视觉层 —— 只换质感，不改结构。
+   原则：所有容器半透明磨砂 + 背景模糊 + 高光描边 + 柔和投影；
+   文案、交互、层级一概不动。深浅色各一套玻璃参数。
+   ============================================================ */
+:root{
+  --glass:rgba(255,255,255,.58);
+  --glass-strong:rgba(255,255,255,.74);
+  --glass-soft:rgba(255,255,255,.42);
+  --glass-line:rgba(255,255,255,.66);
+  --glass-hi:inset 0 1px 0 rgba(255,255,255,.9),inset 0 0 0 1px rgba(255,255,255,.28);
+  --glass-shadow:0 10px 34px rgba(40,52,94,.14),0 2px 8px rgba(40,52,94,.08);
+  --glass-blur:blur(22px) saturate(1.7);
+  --r-lg:18px;
+}
+body[data-theme="dark"]{
+  --glass:rgba(34,37,46,.56);
+  --glass-strong:rgba(39,42,52,.74);
+  --glass-soft:rgba(44,47,58,.42);
+  --glass-line:rgba(255,255,255,.14);
+  --glass-hi:inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 0 1px rgba(255,255,255,.06);
+  --glass-shadow:0 10px 34px rgba(0,0,0,.5),0 2px 8px rgba(0,0,0,.35);
+}
+
+/* 背景：给玻璃「透」出颜色用的柔和彩色渐变（浅色偏晨雾，深色偏夜色） */
+body{background:
+  radial-gradient(1200px 720px at 8% -10%,rgba(123,134,255,.16),transparent 60%),
+  radial-gradient(1000px 640px at 105% 8%,rgba(94,178,255,.14),transparent 60%),
+  radial-gradient(900px 700px at 50% 115%,rgba(255,170,140,.12),transparent 62%),
+  var(--bg)}
+body[data-theme="dark"]{background:
+  radial-gradient(1200px 720px at 8% -10%,rgba(123,134,255,.18),transparent 60%),
+  radial-gradient(1000px 640px at 105% 8%,rgba(64,140,255,.12),transparent 60%),
+  radial-gradient(900px 700px at 50% 115%,rgba(255,120,120,.08),transparent 62%),
+  var(--bg)}
+
+/* 侧边栏 / 顶栏：整块的磨砂玻璃 */
+aside{background:var(--glass);backdrop-filter:var(--glass-blur);
+  -webkit-backdrop-filter:var(--glass-blur);
+  border-right:1px solid var(--glass-line);box-shadow:var(--glass-hi),var(--glass-shadow)}
+.topbar{background:var(--glass);backdrop-filter:var(--glass-blur);
+  -webkit-backdrop-filter:var(--glass-blur);
+  border-bottom:1px solid var(--glass-line);box-shadow:var(--glass-hi)}
+
+/* 卡片：大圆角 + 玻璃 + 悬浮投影 */
+.card{background:var(--glass);backdrop-filter:var(--glass-blur);
+  -webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-line);border-radius:var(--r-lg);
+  box-shadow:var(--glass-hi),var(--glass-shadow)}
+.card h3 span.link:hover{color:var(--accent)}
+
+/* 弹窗：更厚一层玻璃 + 弹出式投影，遮罩加模糊 */
+.mask{backdrop-filter:blur(7px) saturate(1.3);-webkit-backdrop-filter:blur(7px) saturate(1.3)}
+.dlg{background:var(--glass-strong);backdrop-filter:blur(30px) saturate(1.8);
+  -webkit-backdrop-filter:blur(30px) saturate(1.8);
+  border:1px solid var(--glass-line);border-radius:20px;
+  box-shadow:var(--glass-hi),0 24px 60px rgba(20,26,50,.28)}
+
+/* 控件：同材质的半透明按钮 / 输入框 / 下拉 */
+button{background:var(--glass-strong);border:1px solid var(--glass-line);border-radius:10px;
+  box-shadow:var(--glass-hi)}
+button:hover{border-color:var(--accent)}
+button.primary{background:linear-gradient(180deg,#5b6bff,#4350e8);border-color:transparent;
+  box-shadow:var(--glass-hi),0 6px 18px rgba(75,91,247,.35);color:#fff}
+button.ghost{background:transparent;border-color:transparent;box-shadow:none}
+button.danger{border-color:rgba(192,57,43,.35)}
+input,select,textarea{background:var(--glass-soft);border:1px solid var(--glass-line);
+  border-radius:10px;box-shadow:var(--glass-hi)}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);
+  box-shadow:var(--glass-hi),0 0 0 3px rgba(75,91,247,.18)}
+
+/* 列表行 / 课表格 / 备忘录行：轻玻璃 */
+.lesson,.nrow{background:var(--glass-soft);border:1px solid var(--glass-line);
+  border-radius:12px;box-shadow:var(--glass-hi)}
+.lesson.now{background:var(--accent-soft);border-color:var(--accent)}
+.nrow.on{background:var(--accent-soft);border-color:var(--accent)}
+.chip{background:var(--glass-strong);border:1px solid var(--glass-line)}
+table.tt th{background:var(--glass-soft);border:1px solid var(--glass-line)}
+table.tt td{border:1px solid var(--glass-line)}
+table.tt td.slot{background:var(--glass-soft)}
+.caret:hover{background:var(--glass-soft)}
+.homeTodoItem:hover{background:var(--glass-soft)}
+
+/* 药丸 / 标签 / toast：圆滚滚的玻璃小件 */
+.pill{box-shadow:var(--glass-hi)}
+.pill.gray{background:var(--glass-soft);border:1px solid var(--glass-line)}
+.toast{background:rgba(30,33,42,.68);backdrop-filter:blur(18px) saturate(1.6);
+  -webkit-backdrop-filter:blur(18px) saturate(1.6);
+  border:1px solid var(--glass-line);box-shadow:var(--glass-shadow)}
+

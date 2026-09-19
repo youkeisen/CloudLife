@@ -161,7 +161,10 @@ class TestDeliverables(unittest.TestCase):
         r = subprocess.run([PYTHON, str(APP_ROOT / 'tools' / 'smoke_test.py')],
                            capture_output=True, text=True, cwd=str(APP_ROOT),
                            env=dict(os.environ, PYTHONIOENCODING='utf-8'))
-        self.assertEqual(r.returncode, 0, '冒烟脚本没通过：\n' + r.stdout[-1500:])
+        # 注意：消息里的 r.stdout 要容错——有些环境（比如被托管的 python）里
+        # 子进程 stdout 会是 None，assertEqual 的消息是先求值的，直接切片会 TypeError。
+        self.assertEqual(r.returncode, 0,
+                         '冒烟脚本没通过：\n' + (r.stdout or r.stderr or '(无输出)'))
 
 
 if __name__ == '__main__':

@@ -137,6 +137,8 @@ function loadBootstrap() {
     State.settings = d.settings;
     State.weekMeta = d.weekMeta;
     $('ver').textContent = 'v' + d.version;
+    var sideVer = $('sideVer');
+    if (sideVer) sideVer.textContent = 'v' + d.version;
     $('dataPath').textContent = d.dataDir || '—';
     showWarnings(d.warnings);
     applyTheme();

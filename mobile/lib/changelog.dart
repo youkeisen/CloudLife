@@ -5,6 +5,12 @@ library;
 /// (版本号, 变更列表)
 const List<(String, List<String>)> kChangelog = <(String, List<String>)>[
   (
+    '1.5.1',
+    <String>[
+      '节次列加宽 + 时间允许换两行，起止时间不再显示成省略号',
+    ],
+  ),
+  (
     '1.5.0',
     <String>[
       '备忘录定时提醒：编辑页可设提醒日期和时间，到点系统推通知（删除备忘录或清掉提醒会自动撤销）',

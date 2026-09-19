@@ -21,7 +21,7 @@ import '../week.dart';
 const double _cellH = 64;
 const double _cellGap = 4;
 const double _headH = 30;
-const double _labelW = 56;
+const double _labelW = 62;
 const double _dayW = 104;
 
 class CoursesPage extends StatefulWidget {
@@ -869,9 +869,9 @@ class _CoursesPageState extends State<CoursesPage> {
                     ),
                     Text(
                       timeRange(p),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 9, color: cs.outline),
+                      maxLines: 2,
+                      overflow: TextOverflow.visible,
+                      style: TextStyle(fontSize: 9, color: cs.outline, height: 1.2),
                     ),
                   ],
                 ),

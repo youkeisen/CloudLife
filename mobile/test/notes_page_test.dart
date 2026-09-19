@@ -58,7 +58,10 @@ void main() {
   Future<void> pumpApp(WidgetTester tester) async {
     await tester.pumpWidget(MyDayApp(store: store));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('备忘录').last);
+    // v1.3.0 起：备忘录收进「功能」页，路径是 首页 → 功能 → 备忘录
+    await tester.tap(find.text('功能').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('备忘录'));
     await tester.pumpAndSettle();
   }
 

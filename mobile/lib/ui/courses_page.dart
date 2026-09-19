@@ -11,6 +11,7 @@ import '../courses_logic.dart';
 import '../import_logic.dart';
 import '../models.dart';
 import '../pdf_timetable.dart';
+import '../pdf_timetable_v2.dart';
 import '../store.dart';
 import '../timetable.dart';
 import '../week.dart';
@@ -76,6 +77,25 @@ class _CoursesPageState extends State<CoursesPage> {
     return result?.files.single.bytes;
   }
 
+  /// PDF 有两种教务系统格式，逐个试：哪个能解析出课程就用哪个。
+  ParsedTimetable _parsePdfAuto(List<int> bytes) {
+    final lines = extractPdfLines(bytes);
+    final errors = <String>[];
+    final parsers = <ParsedTimetable Function(List<RectLine>)>[
+      parsePdfTimetableFromLines,
+      parsePdfTimetableV2,
+    ];
+    for (final parser in parsers) {
+      try {
+        final p = parser(lines);
+        if (p.courses.isNotEmpty) return p;
+      } on TimetableError catch (e) {
+        errors.add(e.message);
+      }
+    }
+    throw TimetableError(errors.join('；'));
+  }
+
   Future<void> _importTimetable() async {
     List<int>? bytes;
     try {
@@ -89,7 +109,7 @@ class _CoursesPageState extends State<CoursesPage> {
     final ParsedTimetable parsed;
     try {
       parsed =
-          looksLikePdf(bytes) ? parsePdfTimetable(bytes) : parseTimetable(bytes);
+          looksLikePdf(bytes) ? _parsePdfAuto(bytes) : parseTimetable(bytes);
     } on TimetableError catch (e) {
       _toast(e.message);
       return;

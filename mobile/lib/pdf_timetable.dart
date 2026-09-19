@@ -29,19 +29,36 @@ bool looksLikePdf(List<int> bytes) {
   return true;
 }
 
-ParsedTimetable parsePdfTimetable(List<int> bytes) {
+/// 提取带坐标的文字行（两种 PDF 解析器共用的入口）。
+List<RectLine> extractPdfLines(List<int> bytes) {
   if (!looksLikePdf(bytes)) {
     throw TimetableError('这个文件不是 PDF。请用教务系统导出的课表 PDF 再试');
   }
   final doc = PdfDocument(inputBytes: bytes);
-  final lines = <TextLine>[];
+  final out = <RectLine>[];
   try {
-    lines.addAll(PdfTextExtractor(doc).extractTextLines());
+    for (final line in PdfTextExtractor(doc).extractTextLines()) {
+      out.add(RectLine(
+          line.text,
+          line.bounds,
+          [
+            for (final w in line.wordCollection) RectWord(w.text, w.bounds)
+          ]));
+    }
   } catch (e) {
     throw TimetableError('PDF 内容读不出来：$e');
   } finally {
     doc.dispose();
   }
+  return out;
+}
+
+/// 第一种格式（学生课表）的解析入口。
+ParsedTimetable parsePdfTimetable(List<int> bytes) =>
+    parsePdfTimetableFromLines(extractPdfLines(bytes));
+
+/// 第一种格式的核心解析（吃已经提取好的文字行）。
+ParsedTimetable parsePdfTimetableFromLines(List<RectLine> lines) {
   if (lines.isEmpty) {
     throw TimetableError('这份 PDF 里没有提取到文字，可能是扫描件，暂时导不了');
   }
@@ -49,7 +66,7 @@ ParsedTimetable parsePdfTimetable(List<int> bytes) {
   // ---------- 星期词的位置：决定表格方向 ----------
   final dayPos = <int, Rect>{};
   for (final line in lines) {
-    for (final w in line.wordCollection) {
+    for (final w in line.words) {
       final d = dayOf(w.text);
       if (d != null && !dayPos.containsKey(d)) dayPos[d] = w.bounds;
     }
@@ -99,11 +116,11 @@ ParsedTimetable parsePdfTimetable(List<int> bytes) {
   final lineBuckets = <String, List<String>>{}; // '天@列' -> 文字行
   final dayLines = <int, List<RectLine>>{}; // 天 -> 行（含坐标）
 
-  void putLine(int day, String bucketKey, String text, TextLine line) {
-    lineBuckets.putIfAbsent(bucketKey, () => <String>[]).add(text);
+  void putLine(int day, String bucketKey, RectLine line) {
+    lineBuckets.putIfAbsent(bucketKey, () => <String>[]).add(line.text);
     dayLines
         .putIfAbsent(day, () => <RectLine>[])
-        .add(RectLine(text, line.bounds));
+        .add(RectLine(line.text, line.bounds, line.words));
   }
 
   if (transposed) {
@@ -114,7 +131,7 @@ ParsedTimetable parsePdfTimetable(List<int> bytes) {
           line.bounds.center.dy <= maxDayY + 20) {
         continue;
       }
-      for (final w in line.wordCollection) {
+      for (final w in line.words) {
         final t = w.text.trim();
         if (t.isNotEmpty && double.tryParse(t) != null) {
           outside.add((w.bounds.center.dx, w.bounds.center.dy, t));
@@ -161,14 +178,14 @@ ParsedTimetable parsePdfTimetable(List<int> bytes) {
           break;
         }
       }
-      putLine(dayOrNull, '$dayOrNull@$col', line.text, line);
+      putLine(dayOrNull, '$dayOrNull@$col', line);
     }
   } else {
     // 经典布局：节次行在星期列以左（y 分带）
     final periodRows = <(double, String)>[];
     for (final line in lines) {
       if (line.bounds.center.dx >= minDayX) continue;
-      for (final w in line.wordCollection) {
+      for (final w in line.words) {
         final t = w.text.trim();
         if (t.isNotEmpty && double.tryParse(t) != null) {
           periodRows.add((w.bounds.center.dy, t));
@@ -216,7 +233,7 @@ ParsedTimetable parsePdfTimetable(List<int> bytes) {
       final row = rowIndexOf(c.dy);
       final dayOrNull = day;
       if (dayOrNull == null || row == null) continue;
-      putLine(dayOrNull, '$dayOrNull@${rowLabels[row]}', line.text, line);
+      putLine(dayOrNull, '$dayOrNull@${rowLabels[row]}', line);
     }
   }
 
@@ -326,12 +343,22 @@ ParsedTimetable parsePdfTimetable(List<int> bytes) {
   );
 }
 
-/// B 路线用的一行文字：内容 + 坐标（x 区间用来聚簇重建格子）。
-class RectLine {
-  RectLine(this.text, this.bounds);
+/// 一个词：内容 + 坐标。
+class RectWord {
+  RectWord(this.text, this.bounds);
 
   final String text;
   final Rect bounds;
+}
+
+/// 一行带坐标的文字（两种 PDF 解析器共用的输入）。
+/// words 是这一行拆出来的词（表头 / 节次定位用）。
+class RectLine {
+  RectLine(this.text, this.bounds, this.words);
+
+  final String text;
+  final Rect bounds;
+  final List<RectWord> words;
 }
 
 /// 把一格/一天的文字按课程切开：每门课都带一个「(起-止节)」标记，

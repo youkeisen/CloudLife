@@ -2,17 +2,20 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../models.dart';
 import '../store.dart';
+import '../weather_api.dart';
 import '../week.dart';
-import 'courses_page.dart';
+import 'features_page.dart';
 import 'glass.dart';
 import 'home_page.dart';
 import 'notes_page.dart';
 import 'settings_page.dart';
-import '../weather_api.dart';
-import 'weather_page.dart';
 
-/// 底部五 Tab 的主框架：首页 / 课程 / 天气 / 备忘录 / 设置。
+/// 主框架：底部悬浮胶囊栏（首页 / 功能 / ＋ / 设置）。
+///
+/// 课程、天气、备忘录都收进「功能」页里了，底栏只留三个主入口 +
+/// 一个凸起的「＋」（快速新建备忘录）——参考图上那种悬浮式底栏。
 class HomeShell extends StatefulWidget {
   const HomeShell({
     super.key,
@@ -30,7 +33,7 @@ class HomeShell extends StatefulWidget {
   /// 测试钩子：透传给设置页（选备份 zip 的假实现）。
   final Future<List<int>?> Function()? pickZip;
 
-  /// 测试钩子：透传给设置页（假天气接口）。
+  /// 测试钩子：透传给设置页/功能页（假天气接口）。
   final WeatherApi? api;
 
   @override
@@ -40,29 +43,43 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  static const List<String> _labels = <String>['首页', '课程', '天气', '备忘录', '设置'];
+  static const List<String> _labels = <String>['首页', '功能', '设置'];
   static const List<IconData> _icons = <IconData>[
     Icons.home_outlined,
-    Icons.calendar_month_outlined,
-    Icons.cloud_outlined,
-    Icons.edit_note_outlined,
+    Icons.widgets_outlined,
     Icons.settings_outlined,
   ];
   static const List<IconData> _iconsOn = <IconData>[
     Icons.home,
-    Icons.calendar_month,
-    Icons.cloud,
-    Icons.edit_note,
+    Icons.widgets,
     Icons.settings,
   ];
 
   String get _title => _labels[_index];
 
-  /// 首页点了某条备忘录：切到备忘录 Tab 并直接打开那条（对齐电脑版行为）。
+  /// 首页点了某条备忘录：直接打开那条（不再切 Tab，备忘录已经收进功能页）。
   void _openNoteFromHome(String noteId) {
-    setState(() => _index = 3);
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => NoteEditPage(store: widget.store, noteId: noteId),
+    ));
+  }
+
+  /// 底栏中间那个凸起的「＋」：新建一条备忘录并直接进编辑页。
+  void _quickAddNote() {
+    final notes = widget.store.notes();
+    final now = Store.nowIso();
+    final note = Note(
+      id: widget.store.newId('n'),
+      title: '',
+      type: 'text',
+      tags: <String>[],
+      createdAt: now,
+      updatedAt: now,
+    );
+    notes.notes.add(note);
+    widget.store.saveNotes(notes);
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => NoteEditPage(store: widget.store, noteId: note.id),
     ));
   }
 
@@ -91,13 +108,90 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
+  Widget _barItem(int i) {
+    final cs = Theme.of(context).colorScheme;
+    final on = _index == i;
+    return Expanded(
+      child: InkWell(
+        key: ValueKey('tab-${_labels[i]}'),
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => setState(() => _index = i),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Icon(on ? _iconsOn[i] : _icons[i],
+                size: 22, color: on ? cs.primary : cs.outline),
+            const SizedBox(height: 2),
+            Text(_labels[i],
+                style: TextStyle(
+                  fontSize: 11,
+                  color: on ? cs.primary : cs.outline,
+                  fontWeight: on ? FontWeight.w500 : FontWeight.normal,
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 底栏：一块悬浮的玻璃胶囊，中间一个凸起的「＋」。
+  Widget _floatingBar() {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      child: SizedBox(
+        height: 68,
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: <Widget>[
+            Glass(
+              radius: 26,
+              blur: 26,
+              child: SizedBox(
+                height: 62,
+                child: Row(
+                  children: <Widget>[
+                    _barItem(0),
+                    _barItem(1),
+                    const Expanded(child: SizedBox()), // 给中间的「＋」让位
+                    _barItem(2),
+                    const Expanded(child: SizedBox(width: 0)),
+                  ],
+                ),
+              ),
+            ),
+            // 凸起的圆形「＋」：新建备忘录
+            Transform.translate(
+              offset: const Offset(26, -14),
+              child: SizedBox(
+                width: 56,
+                height: 56,
+                child: Material(
+                  key: const ValueKey('tab-quick-add'),
+                  color: cs.primary,
+                  shape: const CircleBorder(),
+                  elevation: 6,
+                  shadowColor: cs.primary.withValues(alpha: 0.5),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: _quickAddNote,
+                    child: const Icon(Icons.add, color: Colors.white, size: 28),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
       HomePage(store: widget.store, onOpenNote: _openNoteFromHome),
-      CoursesPage(store: widget.store),
-      WeatherPage(store: widget.store),
-      NotesPage(store: widget.store),
+      FeaturesPage(store: widget.store, api: widget.api, pickZip: widget.pickZip),
       SettingsPage(
         store: widget.store,
         onChanged: widget.onSettingsChanged,
@@ -135,23 +229,7 @@ class _HomeShellState extends State<HomeShell> {
           key: ValueKey<String>(_labels[_index]),
           child: pages[_index],
         ),
-        bottomNavigationBar: Glass(
-          blur: 24,
-          child: NavigationBar(
-            backgroundColor: Colors.transparent,
-            surfaceTintColor: Colors.transparent,
-            selectedIndex: _index,
-            onDestinationSelected: (int i) => setState(() => _index = i),
-            destinations: <Widget>[
-              for (var i = 0; i < _labels.length; i++)
-                NavigationDestination(
-                  icon: Icon(_icons[i]),
-                  selectedIcon: Icon(_iconsOn[i]),
-                  label: _labels[i],
-                ),
-            ],
-          ),
-        ),
+        bottomNavigationBar: _floatingBar(),
       ),
     );
   }

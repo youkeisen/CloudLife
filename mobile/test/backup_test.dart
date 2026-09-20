@@ -287,4 +287,128 @@ void main() {
       expect(store.settings().refreshMinutes, 10);
     });
   });
+
+  group('记账（v1.7.0，需求文档第 3 条）', () {
+    /// 造一份「有账本」的本机数据。
+    void seedLedger() {
+      store.saveLedger(Ledger(
+        categories: <LedgerCategory>[
+          LedgerCategory(id: 'c1', name: '餐饮', icon: 'food', sort: 0),
+        ],
+        records: <LedgerRecord>[
+          LedgerRecord(
+            id: 'r1', amount: 32, categoryId: 'c1', date: '2026-09-20',
+            note: '奶茶', createdAt: '2026-09-20T12:00:00',
+          ),
+        ],
+      ));
+    }
+
+    test('备份 zip 里有 ledger.json', () {
+      seedLedger();
+      final raw = buildBackupZip(store);
+      final archive = ZipDecoder().decodeBytes(raw);
+      expect(archive.files.any((f) => f.name == 'ledger.json'), isTrue);
+    });
+
+    test('没有账本时备份里就不带 ledger.json（不写 {} 占位）', () {
+      // 关键：写了 {} 占位的话，还原那台机器上的账本会被清空。
+      // 先把可能被 read 自动建出来的文件删掉
+      final f = store.fileFor('ledger');
+      if (f.existsSync()) f.deleteSync();
+      final raw = buildBackupZip(store);
+      final archive = ZipDecoder().decodeBytes(raw);
+      expect(archive.files.any((f) => f.name == 'ledger.json'), isFalse,
+          reason: '不能写占位，否则会清空别人的账本');
+    });
+
+    test('备份里带账本 → 还原后账本还在', () {
+      seedLedger();
+      final raw = buildBackupZip(store);
+      // 清掉账本再还原
+      store.write('ledger', Store.defaultsFor('ledger'));
+      expect(store.ledger().records, isEmpty);
+
+      restoreBackup(store, raw);
+      expect(store.ledger().records.single.note, '奶茶');
+      expect(store.ledger().categories.single.name, '餐饮');
+    });
+
+    test('导电脑版备份（没有 ledger.json）→ 本机账本保持不动', () {
+      seedLedger();
+      // 造一份电脑版风格的备份：只有四份，没有 ledger
+      final archive = Archive();
+      void add(String name, Map<String, dynamic> obj) {
+        final b = utf8.encode(jsonEncode(obj));
+        archive.addFile(ArchiveFile(name, b.length, b));
+      }
+
+      add(backupManifestName, <String, dynamic>{
+        'app': 'MyDay', 'version': 1,
+        'exportedAt': '2026-09-18T22:00:00+08:00',
+        'files': List<String>.from(backupDataFiles),
+      });
+      add('settings.json', Store.defaultsFor('settings'));
+      add('courses.json', Store.defaultsFor('courses'));
+      add('notes.json', Store.defaultsFor('notes'));
+      add('weather_cache.json', Store.defaultsFor('weather_cache'));
+
+      restoreBackup(store, ZipEncoder().encode(archive)!);
+      expect(store.ledger().records.single.note, '奶茶',
+          reason: '电脑版备份里没有账本，不该把本机账本清掉');
+    });
+
+    test('清空数据会把账本一起清掉', () {
+      seedLedger();
+      expect(store.ledger().records, isNotEmpty);
+      store.clearWarnings();
+      resetAllData(store);
+      expect(store.ledger().records, isEmpty);
+      expect(store.ledger().categories, isEmpty);
+    });
+  });
+
+  // v1.7.3：凯森 2026-09-20 反馈「位置设定不了」，
+  // 报错路径 `/storage/emulated/0/下载/Download` 里中英文名叠了层。
+  group('备份目录规整（v1.7.3）', () {
+    test('中英文叠层：/下载/Download 收成 /下载', () {
+      expect(normalizeBackupDir('/storage/emulated/0/下载/Download'),
+          '/storage/emulated/0/下载');
+      expect(normalizeBackupDir('/storage/emulated/0/文档/Documents'),
+          '/storage/emulated/0/文档');
+      expect(normalizeBackupDir('/storage/emulated/0/图片/Pictures'),
+          '/storage/emulated/0/图片');
+    });
+
+    test('没叠层的路径原样返回（不去瞎猜）', () {
+      expect(normalizeBackupDir('/storage/emulated/0/Download'),
+          '/storage/emulated/0/Download');
+      expect(normalizeBackupDir('/storage/emulated/0/下载'),
+          '/storage/emulated/0/下载');
+      expect(normalizeBackupDir('/sdcard/MyFolder'), '/sdcard/MyFolder');
+    });
+
+    test('中文名在中间但结尾不是英文名，不动它', () {
+      expect(normalizeBackupDir('/storage/emulated/0/下载/我的备份'),
+          '/storage/emulated/0/下载/我的备份');
+    });
+
+    test('去掉结尾多余斜杠', () {
+      expect(normalizeBackupDir('/storage/emulated/0/下载///'),
+          '/storage/emulated/0/下载');
+      expect(normalizeBackupDir('/storage/emulated/0/下载/Download/'),
+          '/storage/emulated/0/下载');
+    });
+
+    test('Windows 盘符路径原样不动（不去统一斜杠体裁）', () {
+      expect(normalizeBackupDir(r'C:\Users\me\Documents'),
+          r'C:\Users\me\Documents');
+      expect(normalizeBackupDir(r'C:\Users\me\下载'),
+          r'C:\Users\me\下载');
+    });
+
+    test('反斜杠的叠层也收（Windows 风格）', () {
+      expect(normalizeBackupDir(r'D:\下载\Download'), r'D:\下载');
+    });
+  });
 }

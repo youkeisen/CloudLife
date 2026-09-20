@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  这里原来是给通知小图标做「引用锚点」用的（v1.7.6），
+  但实测**不起作用**：<item> 是「定义一个别名资源」，不是「引用一次」，
+  资源压缩器（shrinkResources）依然把 drawable/ic_notification 判为
+  not reachable 并删除。
+
+  正解是 res/raw/keep.xml 里的 tools:keep —— 见那个文件。
+  本文件保留为一个空的 <resources>，避免历史引用（如果有）报错。
+-->
+<resources />

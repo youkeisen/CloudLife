@@ -20,6 +20,7 @@ import '../backup.dart';
 import '../changelog.dart' show kChangelog;
 import '../lesson_reminder.dart';
 import '../models.dart';
+import '../notification_service.dart';
 import '../reminder_scheduler.dart';
 import '../store.dart';
 import '../system_tweaks.dart';
@@ -90,6 +91,8 @@ class _SettingsPageState extends State<SettingsPage> {
     }).catchError((_) {});
     // 电池优化状态查一次（v1.6.0，需求文档第 8 条）
     _checkBatteryOpt();
+    // 通知权限也查一次（v1.7.4）——「到点不提醒」最常见的原因
+    _checkNotifPerm();
   }
 
   @override
@@ -124,6 +127,13 @@ class _SettingsPageState extends State<SettingsPage> {
   // ---------- 备份 / 还原 / 清空 ----------
 
   Future<void> _doBackup() async {
+    // v1.7.3：设过自定义位置、但权限后来被系统撤了（卸载重装/手动关掉）时，
+    // 备份会直接失败。这里先查一次，没有就引导去开，别让用户吃一个天书报错。
+    if (_s.backupDir.isNotEmpty &&
+        (Platform.isAndroid || SystemTweaks.debugFakeAndroid)) {
+      final ok = await _ensureStoragePermission();
+      if (!ok) return;
+    }
     try {
       final path = saveBackupFile(widget.store, buildBackupZip(widget.store),
           dirPath: _s.backupDir);
@@ -135,10 +145,23 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  /// 选备份位置（v1.6.0，需求文档第 9 条）。
+  /// 选备份位置（v1.6.0，需求文档第 9 条；v1.7.3 加权限前置检查）。
   /// 安卓上 file_picker 的 getDirectoryPath 会弹系统目录选择框；
   /// 有些 ROM 不给选根目录，选不了就提示别处再试。
+  ///
+  /// **v1.7.3 的关键改动**：凯森 2026-09-20 反馈「位置设定不了」，
+  /// 报 `PathAccessException: ... Operation not permitted`。根因是安卓 10+
+  /// 分区存储，普通 File IO 写不进共享目录，**必须先拿到「所有文件访问」权限**。
+  /// 所以现在流程是「**先查权限 → 没有就引导去开 → 开完再选目录**」，
+  /// 而不是等用户选完了才告诉他写不进去。
   Future<void> _pickBackupDir() async {
+    // 先查权限：测试注入 pickDir 时跳过（测试环境没有真实权限概念）
+    final androidLike = Platform.isAndroid || SystemTweaks.debugFakeAndroid;
+    if (widget.pickDir == null && androidLike) {
+      final ok = await _ensureStoragePermission();
+      if (!ok) return;
+    }
+
     String? dir;
     try {
       dir = widget.pickDir != null
@@ -150,8 +173,10 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
     if (dir == null || dir.trim().isEmpty) return;
-    // 落盘前先试写一下：安卓有些目录（比如 / 根目录、别的应用私有目录）
-    // 能选中但写不进去，当场试一下比事后备份失败好懂。
+    // v1.7.3：有些 ROM 的目录选择器会把中英文名叠起来返回
+    // （比如 `/storage/emulated/0/下载/Download`），规整一下再存。
+    dir = normalizeBackupDir(dir);
+    // 再试写一下兜底：万一是别的应用私有目录之类，能选中但确实写不进去
     try {
       final probe = File(p.join(dir, '.cloudlife-write-test'));
       probe.writeAsStringSync('ok', flush: true);
@@ -162,6 +187,57 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     _save((s) => s.backupDir = dir!);
     _toast('备份位置已设为 $dir');
+  }
+
+
+  /// 确保拿到了「所有文件访问」权限。没有就弹框引导用户去系统设置开。
+  /// 返回 true 表示最终有权限（可以继续选目录）。
+  Future<bool> _ensureStoragePermission() async {
+    if (!Platform.isAndroid && !SystemTweaks.debugFakeAndroid) return true;
+    if (await SystemTweaks.hasManageExternalStorage()) return true;
+    if (!mounted) return false;
+
+    // 解释清楚为什么需要这个权限——这是敏感权限，不说明白用户会不敢开
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const ValueKey('dlg-storage-permission'),
+        title: const Text('需要「所有文件访问」权限'),
+        content: const Text(
+          '安卓 10 以后不允许应用直接往「下载」「文档」这类公共目录写文件，'
+          '所以要先给它这个权限，才能把你选的位置当作备份目录。\n\n'
+          '点「去开启」后会跳到系统设置页，找到 CloudLife，'
+          '把「允许访问所有文件」打开，然后回到这里再点一次「选择」。',
+        ),
+        actions: <Widget>[
+          TextButton(
+            key: const ValueKey('dlg-storage-permission-cancel'),
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('先不用'),
+          ),
+          FilledButton(
+            key: const ValueKey('dlg-storage-permission-go'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('去开启'),
+          ),
+        ],
+      ),
+    );
+    if (go != true) return false;
+
+    try {
+      await SystemTweaks.requestManageExternalStorage();
+    } catch (_) {
+      _toast('打不开系统设置，手动去：设置 → 应用 → CloudLife → 权限');
+      return false;
+    }
+    // 用户可能刚开完回来，重查一次；没开好就再提示一遍
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    final now = await SystemTweaks.hasManageExternalStorage();
+    if (!now && mounted) {
+      _toast('还没开启「所有文件访问」，开好后再点一次「选择」');
+    }
+    return now;
   }
 
   Future<List<int>?> _pickZip() async {
@@ -287,6 +363,83 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   // ---------- 后台运行（v1.6.0，需求文档第 8 条） ----------
+
+  /// 查通知权限 + 精确闹钟权限（v1.7.4）。
+  ///
+  /// 为什么必须把它显示出来：权限被拒之后，排进去的通知会被系统**静默丢掉**，
+  /// App 侧完全无感。「到点没提醒」如果只看代码是查不出来的——
+  /// 代码没错、通知也排了，就是系统不给弹。
+  Future<void> _checkNotifPerm() async {
+    if (!Platform.isAndroid && !SystemTweaks.debugFakeAndroid) return;
+    try {
+      final enabled = await NotificationService.notificationsEnabled();
+      final exact = await NotificationService.exactAlarmsAllowed();
+      if (mounted) {
+        setState(() {
+          _notifEnabled = enabled;
+          _exactAlarmOk = exact;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _notifEnabled = null);
+    }
+  }
+
+  /// 再申请一次通知权限；还是不行就带去系统设置。
+  Future<void> _requestNotif() async {
+    try {
+      final ok = await NotificationService.requestPermissionAgain();
+      if (ok) {
+        await _checkNotifPerm();
+        _toast('通知已开启');
+        return;
+      }
+    } catch (_) {/* 落到下面的兜底 */}
+    // 系统可能不再弹框（用户拒过两次），只能引导去设置页手动开
+    try {
+      await SystemTweaks.openAppSettings();
+      _toast('去「通知」那一栏把「允许通知」打开');
+    } catch (_) {
+      _toast('打不开系统设置，手动去：设置 → 应用 → CloudLife → 通知');
+    }
+    await _checkNotifPerm();
+  }
+
+  /// 查系统里**实际排着的**通知条数（v1.7.5）。
+  /// 用来验证「提醒到底排进去了没有」——排 0 条和排了但被压住，是两种病。
+  Future<void> _checkPending() async {
+    try {
+      final list = await NotificationService.pendingRequests();
+      // null = 非安卓/查不到，用 -1 表示，界面上说「查不到」而不是「一条都没有」
+      if (mounted) setState(() => _pendingCount = list?.length ?? -1);
+    } catch (_) {
+      if (mounted) setState(() => _pendingCount = -1);
+    }
+  }
+
+  /// 立刻发一条测试通知（v1.7.6）。
+  ///
+  /// 「到点不提醒」以前只能干等（最快几分钟、最慢第二天那节课），
+  /// 有这个就能当场确认通知链路通不通：弹出来了 = 权限/图标/渠道都正常，
+  /// 剩下的只是排程时机；没反应 = 被系统或国产 ROM 掐了。
+  Future<void> _sendTestNotification() async {
+    try {
+      await NotificationService.showTestNotification();
+      _toast('已发送，看一下通知栏');
+    } catch (e) {
+      _toast('发送失败：$e');
+    }
+  }
+
+  /// 跳到系统的「闹钟与提醒」授权页，让用户允许精确闹钟。
+  Future<void> _openExactAlarmSettings() async {
+    try {
+      await SystemTweaks.openExactAlarmSettings();
+    } catch (_) {
+      _toast('打不开系统设置，手动去：设置 → 应用 → CloudLife → 闹钟和提醒');
+    }
+    await _checkNotifPerm();
+  }
 
   /// 查一下本应用是否已经在电池优化白名单里。
   Future<void> _checkBatteryOpt() async {
@@ -562,11 +715,48 @@ class _SettingsPageState extends State<SettingsPage> {
             toggleKey: 's-bg-toggle',
             open: _bgOpen,
             onToggle: () { _bgOpen = !_bgOpen; _toggleCollapse('bg'); },
-            summary: _batOptIgnored == true ? '已放行' : null,
+            summary: _notifEnabled == false
+                ? '通知被关了'
+                : (_batOptIgnored == true ? '已放行' : null),
             children: <Widget>[
+          // v1.7.4：通知权限排第一。这是「到时间不提醒」最常见的原因——
+          // 权限被拒后系统直接丢掉通知，代码层面看不出任何异常。
+          if (_notifEnabled == false)
+            Container(
+              key: const ValueKey('s-notif-warning'),
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(children: <Widget>[
+                const Icon(Icons.notifications_off_outlined,
+                    size: 18, color: Colors.orange),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    '通知权限被关掉了，提醒到点也不会弹。'
+                    '这是「设了提醒却没动静」最常见的原因。',
+                    style: TextStyle(fontSize: 12, height: 1.4),
+                  ),
+                ),
+              ]),
+            ),
+          _dataLine(
+            '通知权限',
+            _notifEnabled == null
+                ? '查询中…'
+                : (_notifEnabled! ? '已开启，提醒能弹出来' : '被关掉了，提醒不会弹'),
+            OutlinedButton(
+              key: const ValueKey('btn-notif-perm'),
+              onPressed: _notifEnabled == true ? null : _requestNotif,
+              child: Text(_notifEnabled == true ? '已开启' : '去开启'),
+            ),
+          ),
           const Text(
               '提醒是交给系统的闹钟来响的，App 就算被清掉到点也会通知你。'
-              '手机上做了下面这两件事，提醒会更准时：',
+              '手机上做了下面这几件事，提醒会更准时：',
               style: TextStyle(fontSize: 12, height: 1.4)),
           const SizedBox(height: 10),
           _dataLine(
@@ -580,6 +770,63 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Text(_batOptIgnored == true ? '已放行' : '去设置'),
             ),
           ),
+          // v1.7.4：精确闹钟。没开的话提醒会被系统攒着延后触发。
+          _dataLine(
+            '精确定时',
+            _exactAlarmOk == null
+                ? '查询中…'
+                : (_exactAlarmOk!
+                    ? '已允许，提醒准点响'
+                    : '未允许，提醒可能晚几分钟（系统会攒着一起响）'),
+            OutlinedButton(
+              key: const ValueKey('btn-exact-alarm'),
+              onPressed: _exactAlarmOk == true ? null : _openExactAlarmSettings,
+              child: Text(_exactAlarmOk == true ? '已允许' : '去允许'),
+            ),
+          ),
+          // v1.7.6：一键发条测试通知。
+          // 「到点不提醒」最难的是没法当场验证——排好的提醒最快也得等几分钟，
+          // 最慢要等到第二天那节课。有了这个，点一下立刻知道通知通不通。
+          _dataLine(
+            '测试通知',
+            '点一下，通知栏应该立刻弹出一条',
+            OutlinedButton(
+              key: const ValueKey('btn-test-notification'),
+              onPressed: _sendTestNotification,
+              child: const Text('发一条'),
+            ),
+          ),
+          // v1.7.5：自检——直接问系统「现在排着几条通知」。
+          // 这是验证提醒有没有真的排进去最直接的办法：
+          // 显示 0 条 = 排的环节有问题；有一堆 = 排成功了，是权限/拦截压住了。
+          _dataLine(
+            '已排提醒',
+            _pendingCount == null
+                ? '点右侧查一下'
+                : (_pendingCount! < 0
+                    ? '查不到（不影响使用）'
+                    : (_pendingCount == 0
+                        ? '系统里一条都没有 —— 提醒没排进去'
+                        : '系统里有 $_pendingCount 条待提醒，到点会弹')),
+            OutlinedButton(
+              key: const ValueKey('btn-check-pending'),
+              onPressed: _checkPending,
+              child: const Text('检查'),
+            ),
+          ),
+          // 查不到时把真实原因显示出来（v1.7.6）——
+          // 只写「查不到」的话，出问题还得重新猜一遍
+          if (_pendingCount != null &&
+              _pendingCount! < 0 &&
+              (NotificationService.lastPendingError ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 2, bottom: 10),
+              child: Text(
+                '原因：${NotificationService.lastPendingError}',
+                key: const ValueKey('s-pending-error'),
+                style: TextStyle(fontSize: 10, color: cs.outline, height: 1.35),
+              ),
+            ),
           if (Platform.isAndroid)
             Padding(
               padding: const EdgeInsets.only(left: 2),
@@ -831,6 +1078,16 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// 电池优化白名单状态（v1.6.0，需求文档第 8 条）：null = 还没查到。
   bool? _batOptIgnored;
+
+  /// 通知权限状态（v1.7.4）：null = 还没查到。
+  /// 「到时间不提醒」最常见的原因就是它——权限被拒后系统会静默丢掉通知。
+  bool? _notifEnabled;
+
+  /// 精确闹钟权限（v1.7.4）：非精确闹钟会被安卓延后触发。
+  bool? _exactAlarmOk;
+
+  /// 系统里实际排着的通知条数（v1.7.5）：null = 还没查，-1 = 查不到。
+  int? _pendingCount;
   late bool _bgOpen = _collapseFlag('bg', false);
   late bool _periodsOpen = _collapseFlag('periods', false);
   late bool _basicOpen = _collapseFlag('basic', true);

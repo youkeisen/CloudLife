@@ -27,7 +27,10 @@ Future<void> bootMain() async {
     final docs = await getApplicationDocumentsDirectory();
     final store = Store(Directory(p.join(docs.path, 'MyDay')));
     store.init();
-    await rescheduleAllReminders(store);
+    // **headless: true** —— 这里是无界面引擎，没有 Activity。
+    // 走这个模式才不会去申请通知权限（v1.7.6 修的闪退：
+    // 无 Activity 时申请权限会崩进程，表现就是「通知没弹 + App 崩了」）。
+    await rescheduleAllReminders(store, headless: true);
   } catch (_) {
     // 开机阶段失败不能崩，也不能吵用户
   }

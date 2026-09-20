@@ -11,7 +11,9 @@ import 'package:archive/archive.dart';
 import 'package:my_day_phone/app.dart';
 import 'package:my_day_phone/backup.dart' show backupDataFiles;
 import 'package:my_day_phone/models.dart';
+import 'package:my_day_phone/notification_service.dart';
 import 'package:my_day_phone/store.dart';
+import 'package:my_day_phone/system_tweaks.dart';
 import 'package:my_day_phone/ui/settings_page.dart';
 import 'package:my_day_phone/weather_api.dart';
 
@@ -210,6 +212,168 @@ void main() {
       // 说明文案（「自启动」那段只在安卓上显示，测试跑在桌面 VM 上，
       // 所以这里只断言必然存在的说明句，平台相关的文案不强求）
       expect(find.textContaining('交给系统的闹钟'), findsOneWidget);
+    });
+
+    // ---------- v1.7.4：通知权限提示 ----------
+    // 背景（凯森 2026-09-20）：「到时间为什么课程没有提醒通知，
+    // 我没退出软件，通知栏没有弹通知」。查下来权限被拒是头号嫌疑——
+    // 系统会把通知静默丢掉，App 侧完全无感，界面上必须能看出来。
+
+    testWidgets('v1.7.4 通知被拒：卡片展开显示警告 + 按钮可点', (tester) async {
+      SystemTweaks.debugSetStoragePermission(true); // 借用开关让 _checkNotifPerm 生效
+      NotificationService.debugSetPermissions(enabled: false, exact: false);
+      addTearDown(() {
+        SystemTweaks.debugSetStoragePermission(null);
+        NotificationService.debugSetPermissions();
+      });
+
+      await pumpPage(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('s-bg-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('s-notif-warning')), findsOneWidget,
+          reason: '权限被拒必须显眼提示，否则用户根本不知道为啥不响');
+      expect(find.textContaining('通知权限被关掉了'), findsOneWidget);
+      expect(find.byKey(const ValueKey('btn-notif-perm')), findsOneWidget);
+      // 精确闹钟那一项也在（没开 → 按钮可点）
+      expect(find.byKey(const ValueKey('btn-exact-alarm')), findsOneWidget);
+      expect(find.textContaining('精确定时'), findsOneWidget);
+    });
+
+    testWidgets('v1.7.4 通知已开：不显示警告，按钮变「已开启」且禁用', (tester) async {
+      SystemTweaks.debugSetStoragePermission(true);
+      NotificationService.debugSetPermissions(enabled: true, exact: true);
+      addTearDown(() {
+        SystemTweaks.debugSetStoragePermission(null);
+        NotificationService.debugSetPermissions();
+      });
+
+      await pumpPage(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('s-bg-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('s-notif-warning')), findsNothing,
+          reason: '权限正常就别吓唬人');
+      final btn = tester.widget<OutlinedButton>(
+          find.byKey(const ValueKey('btn-notif-perm')));
+      expect(btn.onPressed, isNull, reason: '已开启就不该还能点');
+      expect(find.text('已开启'), findsWidgets);
+    });
+
+    testWidgets('v1.7.5 自检按钮：点一下能查出系统里排了几条', (tester) async {
+      await pumpPage(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('s-bg-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('btn-check-pending')), findsOneWidget);
+      expect(find.textContaining('点右侧查一下'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('btn-check-pending')));
+      await tester.pumpAndSettle();
+
+      // 桌面环境没有真通知插件 → 查不到，显示「查不到（不影响使用）」，
+      // 关键是**不能崩**，也不能误报成「系统里一条都没有」
+      expect(find.textContaining('查不到'), findsOneWidget);
+    });
+
+    // ---------- v1.7.6：一键发测试通知 ----------
+    // 「到点不提醒」以前没法当场验证（最快等几分钟、最慢等到第二天那节课），
+    // 排查一轮要一天。有这个按钮点一下就知道通知链路通不通。
+    testWidgets('v1.7.6 有「测试通知」按钮，点了不崩', (tester) async {
+      await pumpPage(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('s-bg-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('btn-test-notification')), findsOneWidget,
+          reason: '缺测试通知按钮 —— 「通知能不能弹」就没法当场验证');
+      expect(find.textContaining('通知栏应该立刻弹出'), findsOneWidget);
+
+      // 桌面环境没有真通知插件，点下去可能失败，但**绝不能崩**
+      await tester.tap(find.byKey(const ValueKey('btn-test-notification')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    // ---------- v1.7.3：备份位置的「所有文件访问」权限引导 ----------
+    // 背景：凯森 2026-09-20 反馈「位置设定不了」，
+    // 报 `Operation not permitted` —— 安卓 10+ 写共享目录要先有这个权限。
+
+    testWidgets('v1.7.3 没权限时：点「选择」先弹引导框，不去选目录', (tester) async {
+      SystemTweaks.debugSetStoragePermission(false);
+      addTearDown(() => SystemTweaks.debugSetStoragePermission(null));
+
+      var picked = false;
+      await pumpPage(tester); // 不注入 pickDir —— 走真实权限分支
+      // 用真实 getDirectoryPath 会弹系统框，这里只验证引导框先出现，
+      // 所以点完立刻 pump（不要 settle，否则会等系统框）
+      await tester.tap(find.byKey(const ValueKey('btn-backup-dir')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byKey(const ValueKey('dlg-storage-permission')), findsOneWidget,
+          reason: '没权限要先弹引导框');
+      expect(find.textContaining('所有文件访问'), findsWidgets);
+      expect(picked, isFalse);
+      // 收尾：关掉对话框，避免影响后续
+      await tester.tap(
+          find.byKey(const ValueKey('dlg-storage-permission-cancel')));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('v1.7.3 引导框点「先不用」：不落盘、不跳转', (tester) async {
+      SystemTweaks.debugSetStoragePermission(false);
+      addTearDown(() => SystemTweaks.debugSetStoragePermission(null));
+
+      await pumpPage(tester);
+      await tester.tap(find.byKey(const ValueKey('btn-backup-dir')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(
+          find.byKey(const ValueKey('dlg-storage-permission-cancel')));
+      await tester.pumpAndSettle();
+
+      expect(store.settings().backupDir, '', reason: '没选成就不该落盘');
+      expect(find.byKey(const ValueKey('dlg-storage-permission')), findsNothing);
+    });
+
+    testWidgets('v1.7.3 有权限时：不弹引导框，直接走选目录', (tester) async {
+      SystemTweaks.debugSetStoragePermission(true);
+      addTearDown(() => SystemTweaks.debugSetStoragePermission(null));
+
+      final target = Directory.systemTemp.createTempSync('myday-perm-ok-');
+      addTearDown(() {
+        if (target.existsSync()) target.deleteSync(recursive: true);
+      });
+      await pumpPage(tester, pickDir: () async => target.path);
+      await tester.tap(find.byKey(const ValueKey('btn-backup-dir')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('dlg-storage-permission')), findsNothing,
+          reason: '有权限就不该打扰用户');
+      expect(store.settings().backupDir, target.path);
+    });
+
+    testWidgets('v1.7.3 设过位置但权限被撤：点「立即备份」也先引导', (tester) async {
+      SystemTweaks.debugSetStoragePermission(false);
+      addTearDown(() => SystemTweaks.debugSetStoragePermission(null));
+
+      final s = store.settings()..backupDir = tmp.path;
+      store.saveSettings(s);
+
+      await pumpPage(tester);
+      await tester.tap(find.byKey(const ValueKey('btn-backup')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byKey(const ValueKey('dlg-storage-permission')), findsOneWidget,
+          reason: '权限没了要提醒，而不是丢个天书报错');
+      await tester.tap(
+          find.byKey(const ValueKey('dlg-storage-permission-cancel')));
+      await tester.pumpAndSettle();
     });
   });
 

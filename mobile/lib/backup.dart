@@ -29,6 +29,15 @@ const List<String> backupDataFiles = <String>[
   'weather_cache.json',
 ];
 
+/// 手机版独有的可选数据文件（记账，v1.7.0）。
+///
+/// **不进 `backupDataFiles`**：电脑版还原时只看那四份、多出来的会忽略，
+/// 所以带上它是安全的；反过来，手机还原一份电脑版备份时这里面没有
+/// `ledger.json`，也不该报错——账本还是本机原来的。
+const List<String> backupOptionalFiles = <String>[
+  'ledger.json',
+];
+
 const String backupManifestName = 'manifest.json';
 
 /// 还原/校验失败的异常；message 直接给人看。
@@ -45,6 +54,41 @@ class BackupException implements Exception {
 String backupZipName(DateTime now) =>
     'MyDay-backup-${now.year}${pad2(now.month)}${pad2(now.day)}'
     '-${pad2(now.hour)}${pad2(now.minute)}.zip';
+
+/// 规整用户选出来的备份目录（v1.7.3）。
+///
+/// 盯的是「中英文名叠层」这一类：凯森 2026-09-20 那次报错里的路径长这样——
+/// `/storage/emulated/0/下载/Download`。他选中的其实是**里面那个** `Download`，
+/// 而用户认知里的「下载目录」是外层那个 `下载`。叠起来的路径直接拿去写既别扭
+/// 又可能踩到目录不存在，所以规整成外层的 `/storage/emulated/0/下载`。
+///
+/// **只做这一件事**：不去统一斜杠体裁（Windows 上 `C:\a\b` 会被改成
+/// `C:/a/b`，看着等价但会破坏原有字符串、也让测试的期望值对不上），
+/// 也只处理**明确是这种配对**的结尾，其余路径原样返回（不去猜）。
+String normalizeBackupDir(String dir) {
+  var d = dir.trim();
+  // 结尾可能挂一个斜杠（`.../下载/Download/`），先摘掉再比对
+  while (d.length > 1 && (d.endsWith('/') || d.endsWith(r'\'))) {
+    d = d.substring(0, d.length - 1);
+  }
+  const pairs = <List<String>>[
+    <String>['下载', 'Download'],
+    <String>['文档', 'Documents'],
+    <String>['图片', 'Pictures'],
+    <String>['音乐', 'Music'],
+    <String>['视频', 'Movies'],
+  ];
+  for (final sep in const <String>['/', r'\']) {
+    for (final pair in pairs) {
+      final suffix = '$sep${pair[0]}$sep${pair[1]}';
+      if (d.endsWith(suffix)) {
+        // 砍掉后面那个「<sep>英文名」，只留外层的中文名那一段
+        return d.substring(0, d.length - pair[1].length - sep.length);
+      }
+    }
+  }
+  return d;
+}
 
 /// manifest 内容（字段名与电脑版一字不差）。
 Map<String, dynamic> buildManifest(DateTime now) => <String, dynamic>{
@@ -70,6 +114,12 @@ List<int> buildBackupZip(Store store, {DateTime? now}) {
     final f = File(p.join(store.dir.path, name));
     addText(name, f.existsSync() ? f.readAsStringSync() : '{}');
   }
+  // 可选文件（记账）：有就带上，没有就不写进 zip。
+  // 不能写 `{}` 占位——那会让「还原」把账本清空。
+  for (final name in backupOptionalFiles) {
+    final f = File(p.join(store.dir.path, name));
+    if (f.existsSync()) addText(name, f.readAsStringSync());
+  }
   return ZipEncoder().encode(archive)!;
 }
 
@@ -94,7 +144,12 @@ String saveBackupFile(Store store, List<int> bytes,
   try {
     File(path).writeAsBytesSync(bytes, flush: true);
   } catch (e) {
-    throw BackupException('备份位置写不进去：$dirPath（$e）');
+    // v1.7.3：安卓 10+ 写共享目录要先有「所有文件访问」权限，报错太天书，
+    // 直接把该干嘛写进文案（设置页里也会先弹引导框，这里是兜底）。
+    throw BackupException(
+        '备份位置写不进去：$dirPath\n'
+        '去「设置 → 应用 → CloudLife → 权限」打开「所有文件访问」，'
+        '或者把这个位置换回默认（应用数据目录）。（$e）');
   }
   return path;
 }
@@ -166,12 +221,19 @@ String safetyBackup(Store store, {DateTime? now, String? dirPath}) {
 
 /// 校验并覆盖还原。**先全部校验、后一次性写盘**——半套修改不可能发生。
 /// 返回 `{restored: [...], exportedAt: ...}`（键名与电脑版一致）。
+///
+/// 可选文件（记账）**只在备份里确实有它时才覆盖**：导电脑版备份进来时
+/// 里面没有 ledger.json，本机账本保持不动，不会被清空。
 Map<String, dynamic> restoreBackup(Store store, List<int> raw) {
   final archive = ZipDecoder().decodeBytes(raw);
   final manifest = inspectBackup(raw);
   final staged = <String, Map<String, dynamic>>{};
   for (final name in backupDataFiles) {
     staged[name] = _readDataFile(archive, name);
+  }
+  for (final name in backupOptionalFiles) {
+    final has = archive.files.any((f) => f.name == name);
+    if (has) staged[name] = _readDataFile(archive, name);
   }
   staged.forEach((name, obj) {
     store.write(name.substring(0, name.length - '.json'.length), obj);
@@ -183,11 +245,13 @@ Map<String, dynamic> restoreBackup(Store store, List<int> raw) {
   };
 }
 
-/// 清空全部数据：把四份文件写回默认内容（电脑版 api_reset_all 同款）。
+/// 清空全部数据：把四份文件写回默认内容（电脑版 api_reset_all 同款），
+/// 记账也一并清掉。
 /// **调用方负责先做安全备份**——电脑版和这里都是「先备份再清」。
 void resetAllData(Store store) {
   for (final name in Store.fileNames) {
     store.write(name, Store.defaultsFor(name));
   }
+  store.write(Store.ledgerFile, Store.defaultsFor(Store.ledgerFile));
   store.clearWarnings();
 }

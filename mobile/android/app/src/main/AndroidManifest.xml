@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- 天气取数（Open-Meteo）要联网；debug/profile 清单里自带的权限不进正式包，
          这里必须显式声明，否则 release 包完全没网。 -->
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -12,10 +13,24 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <!-- 提示用户把本应用加进电池优化白名单，后台才不被一刀切（v1.6.0） -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <!-- 「备份位置」想写到「下载」这种共享目录（v1.7.3，凯森 2026-09-20 反馈
+         「位置设定不了」，报 Operation not permitted）。安卓 10+ 的分区存储
+         下，普通 File IO 写不进 /storage/emulated/0/**，必须拿到这个
+         「所有文件访问」权限。**属敏感权限**，要在系统设置里手动开，
+         见 MainActivity 的 requestManageExternalStorage。
+         这个 XML 节点必须写成 tools:ignore 的形式，否则 lint 会拦 release 打包。 -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <application
         android:label="CloudLife"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round">
+        <!-- 图标：凯森 2026-09-20 给的 Cloud logo（白线条倒三角，深灰底）。
+             资源由 tools/make_app_icon.py 从他给的横图裁出来，
+             不要手改 mipmap-*/ic_launcher.png（重跑脚本会覆盖）。
+             roundIcon 给那些优先用圆形图标的启动器。 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -49,6 +64,32 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
                 <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
+        <!-- 【v1.7.5 关键修复】这两个 receiver 是 flutter_local_notifications
+             插件的**硬性要求**，漏了的话**定时通知永远不弹**。
+
+             插件用 AlarmManager 排闹钟，到点时靠 ScheduledNotificationReceiver
+             收到广播、再把通知弹出来；ScheduledNotificationBootReceiver 负责
+             开机后恢复已排的闹钟。**只排不宣告接收器 = 闹钟响了没人接**。
+
+             凯森 2026-09-20 反馈「课表提醒和备忘录定时都没有通知」——
+             根因就是这里：从 v1.6.0 引入插件时漏了这段，
+             权限、电池优化全都正常也没用，最后一步的接收器根本不存在，
+             而且不会有任何报错。见插件 README「so that the plugin can
+             actually show the scheduled notification(s)」。
+             **不要删，删了提醒就整个失效。** -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
             </intent-filter>
         </receiver>
         <!-- Don't delete the meta-data below.

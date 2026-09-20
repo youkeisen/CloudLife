@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  通知栏小图标 —— 矢量版（v1.7.6 定稿）。
+
+  ── 为什么用矢量而不是 PNG ──
+  最开始的方案是 5 张 PNG（drawable-{m,h,x,xx,xxx}dpi/ic_notification.png）。
+  结果发现：源 PNG 明明是对的（上框 + 实心倒三角，30.6% 不透明），
+  但打进 APK 之后被 AAPT 的 PNG 优化重新编码成了「细描边空心框」——
+  形状全丢了。通知栏 24dp 下那种细线基本看不见。
+
+  矢量 drawable 不走 PNG 优化，形状 100% 保真，而且体积小、任意密度都清晰。
+  这是安卓官方推荐的通知图标做法，所以定稿用它。
+
+  ── 形状说明 ──
+  按凯森给的 CloudLife logo 简化：上面一个圆角横框（云朵主体），
+  下面一个实心倒三角（云朵的尖）。安卓会自动忽略颜色、只取 alpha 再染色，
+  所以 fillColor 写 #FFFFFFFF 就行，不要在这里体现品牌色。
+
+  ── 尺寸约束 ──
+  通知小图标官方建议 24dp 视口。viewport 用 24x24，
+  图形上下留白，保证系统裁剪时不会被切掉边。
+  图形本身控制在中间约 16x16 的安全区内。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- 云朵主体：圆角横框 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4,5 L20,5 A1.5,1.5 0 0 1 21.5,6.5 L21.5,11.5 A1.5,1.5 0 0 1 20,13 L4,13 A1.5,1.5 0 0 1 2.5,11.5 L2.5,6.5 A1.5,1.5 0 0 1 4,5 Z" />
+
+    <!-- 云朵的尖：实心倒三角 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7.5,14.5 L16.5,14.5 L12,20.5 Z" />
+</vector>

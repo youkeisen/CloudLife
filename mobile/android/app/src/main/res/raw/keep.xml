@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  通知栏小图标的「资源保留清单」（v1.7.6）。
+
+  ── 为什么必须要有这个文件 ──
+  release 打包会跑资源压缩（Resource Shrinker）。它靠**静态引用**判断
+  一个资源「有没有人用」：Java/Kotlin 里的 R.drawable.xxx、XML 里的
+  @drawable/xxx 才算引用。
+
+  而通知小图标是 Dart 侧用**字符串**引用的：
+      AndroidInitializationSettings('@drawable/ic_notification')
+  这只是个运行时字符串，资源分析器看不见 → ic_notification 被判为
+  「没人用」→ 直接从包里删掉。
+
+  后果：代码里图标名写对了，但包里根本没有这张图 →
+  通知栏没图标，部分国产 ROM（小米/OPPO）在弹通知瞬间崩进程。
+
+  ── 怎么发现的 ──
+  构建报告 build/app/outputs/mapping/release/resources.txt 第 208 行：
+      drawable:ic_notification:2131099676 is not reachable.
+  修复后变成：
+      drawable:ic_notification:2131099676 reachable from keep xml file
+
+  ── 以前为什么没修好 ──
+  曾经用 values/notification_icon.xml 写 <item> 当「锚点」，但那是
+  **定义**一个新资源，不是**引用**旧资源，所以 resources.txt 里
+  锚点自己也是 "not reachable"，图标照样被删。keep.xml 才是官方正解。
+
+  ── 语法说明 ──
+  tools:keep 的值是「资源路径」，支持逗号分隔 + * 通配。
+  ic_notification* 一次覆盖可能存在的同名变体（即使现在只有矢量的一个）。
+  这个文件不会被编进 APK，只在打包期生效。
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_notification*" />

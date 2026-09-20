@@ -924,6 +924,78 @@ vivo 拦 USB 安装（`INSTALL_FAILED_ABORTED: User rejected permissions`），
 `am start -a VIEW -d file:///sdcard/Download/xxx.apk -t application/vnd.android.package-archive`
 唤起安装界面让凯森点。
 
+## v1.8.0：自启动一键跳转 + APK 改名（2026-09-21）
+
+凯森要的两件小事：**① 设置里加「自启动」开启按键；② APK 文件名改成 `CloudLife-版本`**。
+
+### 为什么要自启动这一项
+
+国产 ROM（小米 / 华为 / OPPO / vivo / 荣耀…）在安卓之上**额外加了一层「自启动」开关**。
+关着的时候，系统重启或者进程被回收之后，App **不会被拉起来** ——
+那么 `BootReceiver` 里那段「开机把提醒重新排一遍」的逻辑就**根本没有机会跑**，
+表现是：**手机重启之后，课表提醒再也不响了**（而且 App 本身一切正常）。
+
+之前这个只能靠设置页底部一行小字让用户自己去找。现在给成按钮。
+
+### 难点：安卓没有标准的自启动 Intent
+
+翻遍官方文档也不会有 `ACTION_AUTO_START` 这种东西。现实情况：
+
+- **每家 ROM 的自启动管理页包名 + 类名都不一样**（同一家的不同系统版本还换过包名）
+- **没有任何 API 能查这个开关现在是开还是关**
+  → 所以界面上**不做「已开 / 未开」的判断**。猜错比不猜更糟，
+  用户看到「已开启」就会以为没事了
+
+实现（`MainActivity.kt` 的 `openAutoStartSettings()`）：
+
+1. 列一张候选表（vivo / 小米 / OPPO / realme / 华为 / 荣耀 / 三星 / 魅族 / 联想 / 中兴 / 锤子）
+2. 用 `Build.MANUFACTURER / BRAND / PRODUCT / DEVICE` 猜机型，
+   **把自己那一组的候选排到最前面**（`sortedByDescending`）——
+   不排的话，vivo 的机器可能先撞上一个不存在的 OPPO 页面
+3. 逐个 `resolveActivity()` 判断页面存不存在，**存在才 `startActivity()`**
+   （不直接 `start` 然后靠抛异常判断，猜错一堆会一路 ActivityNotFoundException）
+4. 一个都不存在（原生 / Pixel 这类没有自启动概念的 ROM）→ 退到应用详情页，
+   **返回 false 给 Dart 侧**，界面上 toast 说清楚「这台没有专门的自启动页」
+
+返回值的用处：`true` = 跳到了专门的管理页，提示「找到 CloudLife 打开」；
+`false` = 只退到应用详情，不装作成功。
+
+**真机实测（vivo S10，2026-09-21 00:45）**：
+点「去设置」→ `topResumedActivity = com.vivo.permissionmanager/.activity.BgStartUpManagerActivity`。
+即 i 管家的**自启动管理页**（截图上那一列：自启动 / 悬浮窗 / 桌面快捷方式 / 锁屏显示…）。
+
+第一版候选表里 vivo 写的是 `PurviewTabActivity`（权限管理页），实测也能跳，
+但**只停在外层列表**（「自启动 92 个应用 ›」那一行），用户还得自己点进去再翻应用。
+所以把 `BgStartUpManagerActivity` 加进候选表**并排到最前面**，一步到位。
+—— 这就是「按机型排序 + 一个厂商留多个候选」的用处：同一个 ROM 有多个入口，
+浅的那个也能用，但深的那个体验才对。
+
+### 顺手加的守卫：`test/main_activity_guard_test.dart`
+
+`cloudlife/system` 这个通道是**字符串对字符串**的：Dart 侧 `invokeMethod('xxx')`
+必须和 Kotlin 侧 `when (call.method)` 的分支一字不差。写错的表现是
+`MissingPluginException`，而且**只有真机点到那个按钮才会炸**，
+桌面测试和 analyze 全都抓不到。
+
+所以新建了这个文件，直接读两边的源码文本：
+- 7 个 method 名两边对得上（以后加新 method 必须补一行，否则这层网破了）
+- 自启动候选里必须含几个主流 ROM 的包名
+- 必须按机型排序、必须先 resolve 再 start、必须有兜底
+
+### APK 改名
+
+- 本地：`D:\App\apk\` 从 `MyDay-手机版-vX.Y.Z.apk` 改成 **`CloudLife-vX.Y.Z.apk`**
+- GitHub Release 的 asset 同名（`tools/release.py` 的 `default_asset_name` 改了）
+- 理由：**手机桌面上显示的名字就是 CloudLife**（包名仍是 `com.youkeisen.my_day_phone`），
+  安装包叫 MyDay 的话拿到的人对不上是哪个应用
+- 历史的老包**没动**，还在原来的名字上
+
+### 版本号
+
+加功能 → 次位 +1、修订位清 0（凯森定的规矩）：1.7.6+34 → **1.8.0+35**。
+
+417 个测试全绿（新增 14 个），analyze 无问题。
+
 ## 风险
 
 1. **文件选择与存储权限**：安卓 11+ 分区存储，导出备份要落到用户能找到的位置

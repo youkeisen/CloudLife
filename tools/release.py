@@ -156,9 +156,15 @@ def main():
 
 
 def default_asset_name(tag):
-    """tag `mobile-v1.6.0` → asset `MyDay-v1.6.0.apk`（沿用之前的命名）。"""
+    """tag `mobile-v1.6.0` → asset `CloudLife-v1.6.0.apk`。
+
+    命名由凯森 2026-09-21 定的：APK 一律叫 `CloudLife-版本.apk`。
+    因为手机桌面上显示的名字就是 CloudLife（包名还是 com.youkeisen.my_day_phone），
+    叫 MyDay 的话拿到安装包的人对不上是哪个应用。
+    别用中文名 —— 中文进 URL 会让 urllib 报 ascii 编码错。
+    """
     ver = tag.split('mobile-v', 1)[-1] if 'mobile-v' in tag else tag
-    return 'MyDay-v%s.apk' % ver
+    return 'CloudLife-v%s.apk' % ver
 
 
 if __name__ == '__main__':

@@ -66,7 +66,10 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # 修 bug → 修订位 +1，构建号 +1（上一个安装包是 1.7.5+31）。
 # 构建号 +33 = 第 1 次出 1.7.6 的包；
 # 构建号 +34 = 按凯森要求去掉「测试通知」按钮后重新出的包（调试用的东西不留在界面上）。
-version: 1.7.6+34
+#
+# 加功能 → 次位 +1 且修订位清 0（凯森 2026-09-19 定的规矩）。
+# 1.8.0 = 设置里加「自启动」一键跳转；APK 文件名改为 CloudLife-版本.apk。
+version: 1.8.0+35
 
 environment:
   sdk: ^3.13.3

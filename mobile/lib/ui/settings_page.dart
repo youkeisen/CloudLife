@@ -405,6 +405,19 @@ class _SettingsPageState extends State<SettingsPage> {
     await _checkNotifPerm();
   }
 
+  /// 跳 ROM 的「自启动」管理页（v1.8.0）。
+  ///
+  /// 没有标准 Intent，各家 ROM 的页面都不一样，也没有 API 能查状态，
+  /// 所以这里只负责把人送到页面上，不做「已开/未开」的判断——
+  /// 判错了比不判更糟，用户会以为已经没问题了。
+  Future<void> _openAutoStart() async {
+    final opened = await SystemTweaks.openAutoStartSettings();
+    if (!mounted) return;
+    _toast(opened
+        ? '找到 CloudLife，把「自启动」打开'
+        : '这台手机没有专门的自启动页，已打开应用详情页');
+  }
+
   /// 查系统里**实际排着的**通知条数（v1.7.5）。
   /// 用来验证「提醒到底排进去了没有」——排 0 条和排了但被压住，是两种病。
   Future<void> _checkPending() async {
@@ -770,6 +783,18 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Text(_exactAlarmOk == true ? '已允许' : '去允许'),
             ),
           ),
+          // v1.8.0：自启动。国产 ROM 独有的一层开关，关着的话
+          // 手机重启后 App 起不来，开机补提醒就跑不了。
+          _dataLine(
+            '自启动',
+            '关机重启后 App 能自己起来，把提醒重新排上。'
+            '国产手机默认关着，不打开的话重启之后就不提醒了',
+            OutlinedButton(
+              key: const ValueKey('btn-auto-start'),
+              onPressed: _openAutoStart,
+              child: const Text('去设置'),
+            ),
+          ),
           // v1.7.5：自检——直接问系统「现在排着几条通知」。
           // 这是验证提醒有没有真的排进去最直接的办法：
           // 显示 0 条 = 排的环节有问题；有一堆 = 排成功了，是权限/拦截压住了。
@@ -805,8 +830,8 @@ class _SettingsPageState extends State<SettingsPage> {
             Padding(
               padding: const EdgeInsets.only(left: 2),
               child: Text(
-                '国产手机（小米 / 华为 / OPPO / vivo 等）还有一层「自启动」开关，'
-                '在系统设置 → 应用管理 → CloudLife 里打开，后台才不会被清。',
+                '上面的「自启动」不一定能跳对页面（各家手机藏的位置不一样）。'
+                '没跳到的话手动去：设置 → 应用管理 → CloudLife → 自启动。',
                 style: TextStyle(fontSize: 11, color: cs.outline, height: 1.4),
               ),
             ),

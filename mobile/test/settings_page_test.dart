@@ -279,6 +279,34 @@ void main() {
       expect(find.textContaining('查不到'), findsOneWidget);
     });
 
+    // ---------- v1.8.0：自启动入口 ----------
+    // 凯森 2026-09-21 要的。国产 ROM 关着自启动时，手机重启后 App 起不来，
+    // 开机补提醒（BootReceiver）跑不了 —— 表现是「重启后再也不提醒」。
+    // 没有标准 Intent 也没有状态 API，所以这里只能给个入口。
+
+    testWidgets('v1.8.0：后台卡片有「自启动」入口', (tester) async {
+      await pumpPage(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('s-bg-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('btn-auto-start')), findsOneWidget);
+      expect(find.textContaining('自启动'), findsWidgets);
+    });
+
+    testWidgets('v1.8.0：桌面平台点「自启动」不崩', (tester) async {
+      await pumpPage(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('s-bg-toggle')));
+      await tester.pumpAndSettle();
+
+      // 桌面不是安卓，走到 SystemTweaks 的兜底返回 false，
+      // 关键是**不能抛异常**（比如把 MissingPluginException 漏出去）
+      await tester.tap(find.byKey(const ValueKey('btn-auto-start')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
     // ---------- v1.7.6：设置页不该再出现「测试通知」 ----------
     // 凯森明确要求不留这个按钮（是把调试用的东西收在界面外面）。
     // 守的是「别又被加回来」——真要临时验证，走 adb 触发 receiver 那套。

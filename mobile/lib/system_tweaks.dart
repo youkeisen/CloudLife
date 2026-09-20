@@ -88,4 +88,27 @@ class SystemTweaks {
     if (!Platform.isAndroid) return;
     await _ch.invokeMethod<void>('openExactAlarmSettings');
   }
+
+  // ---------- 自启动（v1.8.0） ----------
+  //
+  // 为什么要有这一项：国产 ROM（小米 / 华为 / OPPO / vivo / 荣耀…）额外加了一层
+  // 「自启动」开关。关着的时候系统重启后 App 不会被拉起来，
+  // 开机补提醒（BootReceiver）就完全没机会跑 —— 表现是「手机重启后再也不提醒」。
+  //
+  // 难点：安卓**没有标准 Intent**，每家 ROM 的自启动页包名类名都不同，
+  // 也**没有任何 API 能查开关状态**。所以只能跳过去让用户自己开。
+
+  /// 跳 ROM 的自启动管理页。
+  /// 返回 true = 跳到了专门的自启动页；
+  /// 返回 false = 这台手机找不到那种页面，已退到「应用详情」页兜底
+  /// （原生/Pixel 之类的机器没有自启动概念，就是这种情况）。
+  static Future<bool> openAutoStartSettings() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final v = await _ch.invokeMethod<bool>('openAutoStartSettings');
+      return v ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
 }

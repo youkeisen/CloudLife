@@ -66,14 +66,21 @@ def call(tok, path, method='GET', body=None, raw=None, content_type='application
 
 
 def main():
+    # 命名规矩（凯森 2026-09-21 纠正过，以后别再写错）：
+    #   Release 标题一律 `CloudLife 手机版 vX.Y.Z`
+    #   asset 一律 `CloudLife-vX.Y.Z.apk`
+    # 历史上（v1.1.1 ~ v1.6.1）标题是 `CloudLife vX.Y.Z`，所以叫 CloudLife 不会突兀；
+    # 而 v1.7.6 / v1.8.0 我写成过 `MyDay 手机版`，跟前面二十多个版本不一致，
+    # 已经把这两个标题 PATCH 回来了。**MyDay 是电脑版的名字，手机版是 CloudLife。**
     ap = argparse.ArgumentParser()
     ap.add_argument('tag')
     ap.add_argument('--title')
     ap.add_argument('--notes-file')
     ap.add_argument('--apk', required=True)
     ap.add_argument('--asset-name', default='',
-                    help='asset 名（默认按 tag 生成 MyDay-vX.Y.Z.apk，别用中文）')
-    ap.add_argument('--commit', default='')
+                    help='asset 名（默认按 tag 生成 CloudLife-vX.Y.Z.apk，别用中文）')
+    ap.add_argument('--commit', default='',
+                    help='别用！GitHub 对新 tag 会拒 target_commitish，直接不加')
     ap.add_argument('--prerelease', action='store_true')
     ap.add_argument('--upload-only', action='store_true',
                     help='release 已存在时只补传 APK，不改说明')

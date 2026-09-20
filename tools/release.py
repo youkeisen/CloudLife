@@ -55,7 +55,9 @@ def call(tok, path, method='GET', body=None, raw=None, content_type='application
         req.add_header('Content-Type', content_type)
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
-            return json.loads(resp.read().decode('utf-8'))
+            raw_resp = resp.read().decode('utf-8')
+            # 204 No Content（比如删 asset）没有响应体，别硬解析
+            return json.loads(raw_resp) if raw_resp.strip() else {}
     except urllib.error.HTTPError as exc:
         if exc.code in ok_codes:
             return {}
@@ -66,8 +68,8 @@ def call(tok, path, method='GET', body=None, raw=None, content_type='application
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('tag')
-    ap.add_argument('--title', required=True)
-    ap.add_argument('--notes-file', required=True)
+    ap.add_argument('--title')
+    ap.add_argument('--notes-file')
     ap.add_argument('--apk', required=True)
     ap.add_argument('--asset-name', default='',
                     help='asset 名（默认按 tag 生成 MyDay-vX.Y.Z.apk，别用中文）')
@@ -75,14 +77,18 @@ def main():
     ap.add_argument('--prerelease', action='store_true')
     ap.add_argument('--upload-only', action='store_true',
                     help='release 已存在时只补传 APK，不改说明')
+    ap.add_argument('--replace', action='store_true',
+                    help='同名附件已存在时先删掉再传（重新出包覆盖用）')
+    ap.add_argument('--update-notes', action='store_true',
+                    help='release 已存在时也用 --notes-file 覆盖说明（默认只传包）')
     args = ap.parse_args()
 
     if not os.path.isfile(args.apk):
         raise SystemExit('APK 不存在：' + args.apk)
-    with open(args.notes_file, encoding='utf-8') as fh:
-        notes = fh.read().strip()
-    if not notes:
-        raise SystemExit('说明文件是空的：' + args.notes_file)
+    notes = ''
+    if args.notes_file:
+        with open(args.notes_file, encoding='utf-8') as fh:
+            notes = fh.read().strip()
 
     tok = token()
 
@@ -94,12 +100,19 @@ def main():
             raise SystemExit('查已有 release 失败：' + str(exc))
         existing = None
 
+    if existing is None and not notes:
+        raise SystemExit('要新建 release，得给 --notes-file（说明不能是空的）')
+
     if existing is not None:
         if not args.upload_only:
             raise SystemExit('这个 tag 已经有 release 了：%s（要是只想补传 APK，加 --upload-only）'
                              % args.tag)
         rel = existing
         print('release 已存在，只补传附件：', rel.get('html_url'))
+        if args.update_notes and notes:
+            rel = call(tok, '/repos/%s/releases/%s' % (REPO, rel['id']),
+                       'PATCH', body={'body': notes})
+            print('说明也更新了')
     else:
         payload = {
             'tag_name': args.tag,
@@ -116,9 +129,15 @@ def main():
     # asset 名字用英文：中文名放进 URL 会让 urllib 用 ascii 编码报错
     # （之前踩过：UnicodeEncodeError: 'ascii' codec can't encode）。
     name = args.asset_name or default_asset_name(args.tag)
-    have = {a.get('name') for a in rel.get('assets') or []}
+    have = {a.get('name'): a for a in rel.get('assets') or []}
     if name in have:
-        raise SystemExit('这个 release 已经有同名附件了：' + name)
+        if not args.replace:
+            raise SystemExit('这个 release 已经有同名附件了：%s'
+                             '（要覆盖就加 --replace）' % name)
+        old = have[name]
+        call(tok, '/repos/%s/releases/assets/%s' % (REPO, old['id']),
+             'DELETE', ok_codes=(204,))
+        print('删掉旧附件：%s（%d 字节）' % (old.get('name'), old.get('size', 0)))
     # 传附件要走 uploads.github.com（release 对象里的 upload_url 给了地址，
     # 它在 api.github.com 上是 404）。
     upload_base = (rel.get('upload_url') or '').split('{')[0]

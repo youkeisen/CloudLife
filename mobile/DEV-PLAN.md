@@ -858,23 +858,36 @@ APK 里 PNG 从 13 张变 18 张（正好多的 5 张）。
 
 **仍然不发 Release，等凯森实机确认。**
 
-#### v1.7.6 补：加「测试通知」按钮（不然没法当场验证）
+#### v1.7.6 补：调试按钮不留（凯森 2026-09-20 定）
 
-修完之后还剩一个尴尬的问题：**怎么确认通知真的能弹**？
-排好的提醒最快也要等几分钟，最慢得等到第二天早上那节课，排查一轮要一天。
+修完还剩一个问题：**怎么确认通知真的能弹**？排好的提醒最快也要等几分钟，
+最慢得等到第二天早上那节课，排查一轮要一天。
 
-所以在「设置 → 后台运行与提醒」里加了一行：
+我当时的做法是往「设置 → 后台运行与提醒」里塞一行：
 
 > 测试通知  点一下，通知栏应该立刻弹出一条   [发一条]
 
-- `NotificationService.showTestNotification()`：走 `_plugin.show()` 立即发，
-  用的**和真实提醒完全相同的渠道和小图标**，所以它的表现能代表真实提醒。
-- 固定 id（`_idOf('__test_notification__')`），重复点是覆盖同一条，不会刷出一串。
-- 诊断价值：弹出来了 = 权限/图标/渠道都正常，只剩排程时机问题；
-  没反应 = 被系统或国产 ROM 掐了；直接闪退 = 原生层/图标有问题。
+验证完凯森说：**不留测试通知**。调试用的东西不该留在界面上。已全部移除：
 
-顺带的好处：**我可以用 adb 自己点它验证**，不用等凯森操作
-（`uiautomator dump` 拿到坐标 → `input tap`）。
+- `notification_service.dart` 删掉 `showTestNotification()`
+- `settings_page.dart` 删掉那一行和 `_sendTestNotification()`
+- `settings_page_test.dart` 原本「有测试通知按钮」的用例改成**反向守卫**
+  （断言 `btn-test-notification` 不存在、文案「通知栏应该立刻弹出」不存在），
+  免得以后又被人加回去
+- changelog 里那句也删了
+
+**那以后怎么验证通知？** 不靠按钮，直接 adb 打 receiver：
+
+```bash
+adb shell am broadcast -n com.youkeisen.my_day_phone/com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver
+```
+
+它走的是真实链路（反序列化 payload → 建通知 → 调系统），
+比一个自己 `show()` 的按钮**更能证明问题不在原生层**——
+本次就是这么抓到 R8 那个崩溃的。
+
+「已排提醒 → 检查」那一项**留着**，它是排查用的自检（显示真实错误），
+不是调试按钮，凯森没让删。
 
 #### 真机实测记录（2026-09-20 23:05~23:30）
 
@@ -884,10 +897,15 @@ APK 里 PNG 从 13 张变 18 张（正好多的 5 张）。
 | 装前状态 | 1.7.5+31，通知权限 granted、精确闹钟 granted、所有文件访问 allow |
 | ① 手动触发 receiver | **0 条崩溃**（修复前每次必崩 `Missing type parameter`）|
 | ② 排上的闹钟 | 3 条 `RTC_WAKEUP` flags=9（精确）：09-21 08:00 / 09:50 / 18:50 |
-| ③ 点「发一条」测试通知 | **通知真的出现在通知栏**，crash buffer 0 条 |
+| ③ adb 打 receiver 触发通知 | **通知真的出现在通知栏**，crash buffer 0 条 |
 | ④ 通知小图标 | `icon=Icon(typ=RESOURCE ... id=0x7f06001c)`，反查 R.txt = **`drawable/ic_notification`** ✓ |
 
 **四道验证全部通过，修复闭环完成。**
+
+**1.7.6+34 复验**（去掉测试通知按钮后重新出包）：
+403 个测试全绿、analyze 无问题、装到真机 `versionCode=34`，
+`uiautomator dump` 确认「后台运行与提醒」里只剩
+通知权限 / 电池优化白名单 / 精确定时 / 已排提醒 四项，没有多余按钮。
 
 > ④ 的确认方法值得记下来：APK 里资源名被 AAPT 混淆，按名字搜不到。
 > 做法是让系统把通知的 icon 资源 id 打出来（`dumpsys notification`），

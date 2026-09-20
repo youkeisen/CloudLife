@@ -279,23 +279,20 @@ void main() {
       expect(find.textContaining('查不到'), findsOneWidget);
     });
 
-    // ---------- v1.7.6：一键发测试通知 ----------
-    // 「到点不提醒」以前没法当场验证（最快等几分钟、最慢等到第二天那节课），
-    // 排查一轮要一天。有这个按钮点一下就知道通知链路通不通。
-    testWidgets('v1.7.6 有「测试通知」按钮，点了不崩', (tester) async {
+    // ---------- v1.7.6：设置页不该再出现「测试通知」 ----------
+    // 凯森明确要求不留这个按钮（是把调试用的东西收在界面外面）。
+    // 守的是「别又被加回来」——真要临时验证，走 adb 触发 receiver 那套。
+    testWidgets('v1.7.6：设置页没有「测试通知」按钮', (tester) async {
       await pumpPage(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('s-bg-toggle')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('btn-test-notification')), findsOneWidget,
-          reason: '缺测试通知按钮 —— 「通知能不能弹」就没法当场验证');
-      expect(find.textContaining('通知栏应该立刻弹出'), findsOneWidget);
-
-      // 桌面环境没有真通知插件，点下去可能失败，但**绝不能崩**
-      await tester.tap(find.byKey(const ValueKey('btn-test-notification')));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('btn-test-notification')), findsNothing,
+          reason: '凯森要求不留测试通知按钮');
+      expect(find.textContaining('通知栏应该立刻弹出'), findsNothing);
+      // 已排提醒的自检要留着——那个是排查用的，不是调试按钮
+      expect(find.byKey(const ValueKey('btn-check-pending')), findsOneWidget);
     });
 
     // ---------- v1.7.3：备份位置的「所有文件访问」权限引导 ----------

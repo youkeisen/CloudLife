@@ -62,11 +62,11 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # v1.7.6 补记（连上真机后）：上面那些都不是主因。真机崩溃记录显示
 #   receiver 一启动就抛 Missing type parameter —— R8 把 Gson 需要的
 #   泛型签名擦掉了。加了 android/app/proguard-rules.pro 才真修好。
-# 顺带加了「测试通知」按钮，让通知能不能弹可以当场验证，不用干等。
 #
 # 修 bug → 修订位 +1，构建号 +1（上一个安装包是 1.7.5+31）。
-# 本次重新出的包（加了测试通知按钮）→ 构建号再 +1。
-version: 1.7.6+33
+# 构建号 +33 = 第 1 次出 1.7.6 的包；
+# 构建号 +34 = 按凯森要求去掉「测试通知」按钮后重新出的包（调试用的东西不留在界面上）。
+version: 1.7.6+34
 
 environment:
   sdk: ^3.13.3

@@ -417,20 +417,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  /// 立刻发一条测试通知（v1.7.6）。
-  ///
-  /// 「到点不提醒」以前只能干等（最快几分钟、最慢第二天那节课），
-  /// 有这个就能当场确认通知链路通不通：弹出来了 = 权限/图标/渠道都正常，
-  /// 剩下的只是排程时机；没反应 = 被系统或国产 ROM 掐了。
-  Future<void> _sendTestNotification() async {
-    try {
-      await NotificationService.showTestNotification();
-      _toast('已发送，看一下通知栏');
-    } catch (e) {
-      _toast('发送失败：$e');
-    }
-  }
-
   /// 跳到系统的「闹钟与提醒」授权页，让用户允许精确闹钟。
   Future<void> _openExactAlarmSettings() async {
     try {
@@ -782,18 +768,6 @@ class _SettingsPageState extends State<SettingsPage> {
               key: const ValueKey('btn-exact-alarm'),
               onPressed: _exactAlarmOk == true ? null : _openExactAlarmSettings,
               child: Text(_exactAlarmOk == true ? '已允许' : '去允许'),
-            ),
-          ),
-          // v1.7.6：一键发条测试通知。
-          // 「到点不提醒」最难的是没法当场验证——排好的提醒最快也得等几分钟，
-          // 最慢要等到第二天那节课。有了这个，点一下立刻知道通知通不通。
-          _dataLine(
-            '测试通知',
-            '点一下，通知栏应该立刻弹出一条',
-            OutlinedButton(
-              key: const ValueKey('btn-test-notification'),
-              onPressed: _sendTestNotification,
-              child: const Text('发一条'),
             ),
           ),
           // v1.7.5：自检——直接问系统「现在排着几条通知」。

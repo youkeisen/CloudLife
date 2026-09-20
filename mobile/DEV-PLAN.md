@@ -26,6 +26,32 @@ Set-Location D:\App\MyDay\mobile
 环境：Flutter 3.47.4 / Dart 3.13.3（`D:\dev\flutter`）、Android SDK `D:\dev\Android\sdk`、
 JDK 21、Gradle 9.3.1。包名 `com.youkeisen.my_day_phone`。
 
+## 应用图标（2026-09-20 起用凯森给的 Cloud logo）
+
+图标**不是手改的，由脚本从原图生成**——重跑脚本会覆盖 `mipmap-*/ic_launcher*.png`，
+所以不要手改那些文件。
+
+- 原图：凯森给的 `D:\下载\Image_1789890840834_943.jpg`（500×350，深灰底
+  (34,34,34) + 白色线条倒三角 logo，三角上方一行小字 CLOUD）。
+  这个路径是外部的，将来重跑前先确认文件还在（或在 DEV-PLAN 里留一份说明）。
+- `py -3 tools/make_app_icon.py`：裁正方形（去掉左右空白，以 logo 中心为圆心）
+  → 生成 5 个密度的 `mipmap-*/ic_launcher.png` + `ic_launcher_round.png`（圆版）。
+- `py -3 tools/make_adaptive_icon.py`：生成 Android 8+ 的**自适应图标**
+  （`mipmap-anydpi-v26/ic_launcher.xml` + `drawable/ic_launcher_foreground.png`
+  + `values/ic_launcher_background.xml`）。**Android 8+ 优先用这一套**，
+  比位图那套显示得更好（系统自己裁形状，边缘干净）。
+
+两个脚本都做了同一件事：**按 logo 的实际白像素边界自动定位中心**，再按比例
+留安全边距。这里的关键取舍：
+- 位图那套（老系统）留 56%——圆角裁切下小字不贴边；
+- 自适应那套留 52%——自适应图标的「安全区」官方规范是 66%，
+  但国产 ROM 的圆形桌面会裁到接近外接圆，收到 52% 才舒服。
+- **别把这两个比例调大**：logo 会顶到圆形边缘被切。改完一定要用
+  「圆形 / squircle / 圆角方」三种 mask 预览一遍再打包。
+
+`AndroidManifest.xml` 里 `android:icon` 指 `@mipmap/ic_launcher`、
+`android:roundIcon` 指 `@mipmap/ic_launcher_round`。
+
 ## 发布流程（2026-09-19 16:50 起改：GitHub 上传由小凯负责）
 
 **版本号规则（凯森 2026-09-19 定）**：三段式 主.次.修订，起步 1.0.0。
@@ -438,6 +464,447 @@ pubspec.yaml 写成 `主.次.修订+构建号`，构建号每出一个安装包 
 测试：课程页新增 4 个（说明内容、取消不调选择器、确认才调选择器、坏文件不崩），
 `import_page_test.dart` 三处点击补上过弹窗（`tapImport` 辅助）。
 **291 个测试全绿，analyze 无问题。** 版本 1.6.0+24 → **1.6.1+25**（修订位 +1）。
+
+### v1.7.0 记账模块（需求文档第 3 条，2026-09-20）
+
+需求文档第 3 条。设计稿（桌面文档内嵌的 image2，v2.1）给了四个区域：
+记账主页 / 记一笔 / 分类管理底部弹层 / 数据结构（原稿是 SQLite 两张表）。
+**配色按凯森要求沿用 CloudLife 现有浅色风格**，不照抄设计稿的深色稿。
+
+数据层：
+- `models.dart` 加 `LedgerCategory` / `LedgerRecord` / `Ledger`，字段名照设计稿的
+  `categories(id,name,icon,sort)` / `records(id,amount,category_id,date,note,created_at)`，
+  只是把 SQLite 的 id 换成字符串 id；照惯例带 `extra`（认不出的字段原样保留）。
+- **金额一律存正数**，方向归 `kind`（expense / income）；`signed` getter 处符号。
+  这样改方向不用改金额，也躲开「负负得正」的算术坑。读坏数据时负数会被 `.abs()` 掰正。
+- `ledger.json` **故意不进 `Store.fileNames`**：那四份是和电脑版严格对齐的，
+  记账是手机版独有。查过电脑版 `app/backup.py` 的 `restore_bytes` 只读那四份、
+  多余文件忽略 → 所以把 ledger 作为**可选文件**打进 zip 是安全的。
+- `backupOptionalFiles`：备份时「有就带上」（不能写 `{}` 占位），
+  还原时「备份里确实有才覆盖」——否则电脑版备份导进来会把账本清空。
+- `ensureLedgerSeed()` 用 `Ledger.extra['catsSeeded']` 当**种过标记**，
+  而不是判断「列表是否为空」：用户可能主动把分类删光，那时不该又冒出默认分类。
+
+纯逻辑（`ledger_logic.dart`，全部可单测）：
+`monthKeyOf` / `dateKeyOf` / `parseDateKey`（拦 2 月 31 这类）、`shiftMonth`、
+`formatAmount`（按分四舍五入 + 千分位）、`summarizeMonth` / `maxExpenseOf`、
+`groupByDay`（日期倒序、组内 createdAt 倒序）、`dayLabel` / `monthLabel`、
+`validateCategoryName` / `validateAmount`、`sortedCategories`、`recordCountOf`、`findCategory`。
+**日均按「有记账的天数」算**，不是自然月天数——月中才开始记账时日均不会虚低。
+
+界面：`ledger_page.dart`（主页）/ `ledger_edit_page.dart`（记一笔）/ 
+`ledger_categories_sheet.dart`（分类管理弹层），入口挂在「功能」页 `feat-ledger`。
+- 金额输入用**字符串缓存**：存 double 的话「32.」这种中间状态会丢掉小数点，没法继续敲。
+- 自带数字键盘（对齐设计稿布局），数字区与功能区各占一侧。
+- 单位金额按分四舍五入 `(v * 100).round() / 100`，规避 `0.1 + 0.2` 的浮点尾巴。
+- 删分类**不连带删账**：那些账的 `categoryId` 指向不到了，界面按 `findCategory`
+  返回 null 显示成「未分类」，金额和日期都还在。删之前会提示「还有 N 笔账」。
+
+**这轮修掉的一个真实缺陷**：原先主页只在编辑页返回 `true`（保存过）时才刷新，
+于是「在编辑页进分类管理改了名字 / 删了分类 → 按返回键退出」之后，
+主页的流水还挂着已经删掉的名字。改成**从编辑页回来就无条件重读数据**
+（几毫秒的事），并补了回归测试
+「在编辑页改了分类名，直接按返回键退出，主页也要跟着变」。
+
+测试：`ledger_logic_test.dart` 40 例、`store_test.dart` 新增 8 例、
+`backup_test.dart` 新增 5 例、`ledger_page_test.dart` 17 例。
+**359 个测试全绿，analyze 无问题。** 版本 1.6.1+25 → **1.7.0+26**
+（加功能 → 次位 +1、修订位清 0，构建号 +1）。
+
+### v1.7.2 修「进记账界面整屏变黑」（凯森 2026-09-20 反馈）
+
+凯森发了两张截图：主页是正常的白底，一进「记一笔」就整屏全黑。
+要求顺带**排查其他所有界面**有没有同样的问题。
+
+根因和 v1.1.1 那次**是同一个坑**：`buildTheme()` 里
+`scaffoldBackgroundColor: Colors.transparent`，配合 Liquid Glass 的
+`GlassBackdrop` 垫层；而**独立整页（自己 push 成一条新路由的页面）底下没有壳子的
+渐变背景，必须自己垫一层**，否则透明的 Scaffold 直接透出 `Navigator` 的路由遮罩黑底。
+- `NoteEditPage`（备忘录）当年踩过，页面内部自己套了 `GlassBackdrop` —— OK
+- `FeaturesPage._open` 是统一「外面套一层」的写法，走它的页面 —— OK
+- **`LedgerEditPage` 漏了**（`ledger_edit_page.dart` 直接返回裸 `Scaffold`）→ 本轮修
+
+修法（两层保险）：
+1. `LedgerEditPage.build()` 外层包 `GlassBackdrop`，补 `import 'glass.dart';`
+   —— 不给「从哪进来的」留假设，页面自己负责自己的底
+2. 守卫测试从「只守备忘录」扩成**守所有独立整页**
+
+排查方法：把 `lib/ui/` 下 5 处 `Navigator.push` 全过了一遍，逐个看目标页是谁、
+背景从哪来。结论是**只有记账编辑页这一处漏了**。
+
+测试：`editor_backdrop_test.dart` 从 2 例扩到 **7 例**：
+- 备忘录 2 例（浅色 / 深色）
+- 记账 4 例（记一笔页 / 改一笔页 / 从主页点「＋」进去的路 / **主页本身不该垫**——防止套两层叠出多余模糊）
+- **源码兜底扫描 1 例**：扫 `lib/ui/` 下所有含 `Scaffold(` 的 .dart，
+  白名单是「内容块」（被壳子套着、自己不该垫的那批：`features_page` / `home_page` /
+  `weather_page` / `courses_page` / `settings_page` / `notes_page` / `ledger_page` /
+  `glass.dart` / `wheel_time_picker.dart`），**其余只要有 `Scaffold` 就必须出现
+  `GlassBackdrop`**，否则测试失败并报出文件名
+
+这条兜底扫描是刻意写的：这类 bug 已经犯过两次（v1.1.1 备忘录、v1.7.2 记账），
+靠人肉 review 不保险，不如让**以后任何新加的整页忘了垫背景时，测试直接拦住**。
+
+**364 个测试全绿，analyze 无问题。** 版本 1.7.1+27 → **1.7.2+28**（修订位 +1）。
+
+### v1.7.3 修「备份位置设不了」（需求文档第 9 条的延伸，凯森 2026-09-20 反馈）
+
+凯森在设置页点「数据 → 备份位置 → 选择」，选了「下载」目录后弹：
+```
+这个位置写不进去，换一个（比如「下载」目录）：
+PathAccessException: Cannot open file,
+path = '/storage/emulated/0/下载/Download/.cloudlife-write-test'
+(OS Error: Operation not permitted, errno = 1)
+```
+
+**两个问题叠在一起**：
+
+1. **主因：没有「所有文件访问」权限。** 安卓 10（API 29）起的分区存储下，
+   普通 `dart:io` 的 File IO **写不进 `/storage/emulated/0/**` 这类共享目录**，
+   必须拿到 `MANAGE_EXTERNAL_STORAGE`。file_picker 的 `getDirectoryPath()`
+   返回的是真实文件系统路径，能选中但写不了 —— 这正是「能选、选完报错」的现象。
+2. **次因：路径叠层。** 报错里是 `/storage/emulated/0/下载/Download`，
+   中英文两个名字叠在一起（部分 ROM 的目录选择器会这样返回）。
+
+**凯森的选择**（2026-09-20，问过三个方案后）：走**申请「所有文件访问」权限**，
+不改「另存为」弹窗那条路。已知代价：这是敏感权限，**系统只给跳转页、不给一键授权**，
+用户必须手动点一次；个别国产 ROM 还会二次确认，甚至不生效。
+
+改动分三层：
+
+- **原生**（`MainActivity.kt`）：`cloudlife/system` 通道加两个方法
+  `hasManageExternalStorage` / `requestManageExternalStorage`。
+  查状态用 `Environment.isExternalStorageManager()`；跳转用
+  `ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION`，打不开退
+  `ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION`，再不行退应用详情页。
+  **Android 11 以下直接当「有权限」**，免得在旧机型上误报。
+- **清单**（`AndroidManifest.xml`）：加 `MANAGE_EXTERNAL_STORAGE`，
+  带 `tools:ignore="ScopedStorage"`（不加 lint 会拦 release 打包），
+  根节点补 `xmlns:tools`。
+- **界面**（`settings_page.dart`）：`_pickBackupDir` 从「选完再试写」改成
+  **「先查权限 → 没有就弹框引导 → 开完再选」**。引导框把原因讲清楚
+  （不说明白用户不敢开敏感权限）。同一个引导也接到 `_doBackup` 上，
+  覆盖「设过位置、但权限后来被系统撤了」的情况。
+- `normalizeBackupDir()`（放 `backup.dart`，纯函数好测）：把
+  `.../下载/Download` 收成 `.../下载`。**只做这一件事**——
+  不去统一斜杠体裁（Windows 上会把 `C:\a\b` 改成 `C:/a/b`，
+  看着等价其实破坏了原字符串，我第一版就踩了这个坑，被测试逮住）。
+
+测试：`backup_test.dart` 加 6 例（含「Windows 盘符路径原样不动」的守卫）、
+`settings_page_test.dart` 加 4 例（没权限弹引导 / 点「先不用」不落盘 /
+有权限不打扰 / 设过位置但权限被撤时点备份也引导）。
+为此给 `SystemTweaks` 加了 `debugSetStoragePermission()` 测试钩子——
+桌面测试跑不到真安卓，没这个钩子就测不了权限分支。
+
+**374 个测试全绿，analyze 无问题。** 版本 1.7.2+28 → **1.7.3+29**（修订位 +1）。
+包内已确认 `MANAGE_EXTERNAL_STORAGE` 声明在位、versionName 1.7.3。
+
+### v1.7.4 修「到时间不弹课程提醒通知」（需求文档第 1 条的延伸，凯森 2026-09-20 反馈）
+
+凯森：**「到时间为什么课程没有提醒通知，我没退出软件，通知栏没有弹通知」**。
+关键线索是「没退出软件」——App 在前台时定时通知照样该弹，所以不是「被后台杀了」。
+
+查下来是**三个独立问题叠在一起**，缺一个都能导致不响：
+
+**① 通知权限被拒后无人知晓（头号嫌疑）**
+`NotificationService.init()` 里只在**首次**调
+`requestNotificationsPermission()`，之后 `_ready = true` 直接短路。
+用户第一次装的时候要是点了「不允许」，App 永远不会再问，而系统会把排进去的
+通知**静默丢掉**——代码没错、通知也排了，就是不给弹，界面上一点提示都没有。
+
+**② 用的是非精确闹钟**
+原来死用 `AndroidScheduleMode.inexactAllowWhileIdle`。安卓会把非精确闹钟
+**攒起来延后触发**，省电模式下晚十几分钟很常见，用户看到的就是「到点没动静，
+过一会儿才冒出来」。而 manifest 里其实**早就声明了 `SCHEDULE_EXACT_ALARM`**，
+只是没用上。
+
+**③ 重排是「先全撤、后重排」**
+`_rescheduleLessons` 原来先把所有课的通知 `cancelId` 掉，再逐条 `scheduleRaw`。
+中间任何一步抛异常都会被 `catch (_)` 吞掉，结果是**旧的全撤了、新的一条没排上**
+——用户那边看起来就是「本来能响的提醒突然全没了」，还没有任何报错。
+
+改法：
+- `notification_service.dart`：加 `notificationsEnabled()` /
+  `exactAlarmsAllowed()` / `requestPermissionAgain()` 三个查询；
+  排通知改走 `_mode()`——**优先 `exactAllowWhileIdle`，拿不到精确权限才退回非精确**；
+  加 `debugSetPermissions()` 测试钩子（桌面跑不到真安卓）
+- `reminder_scheduler.dart`：**先算出 `lessonReminders` 列表再动旧通知**；
+  列表为空（用户主动关提醒/没设第 1 周周一）直接 return，不撤旧的；
+  只撤「新列表里不要的」那些 id
+- `settings_page.dart`：`后台运行与提醒` 卡片里**加两项状态 + 一键跳转**——
+  通知权限被拒时顶部还给个橙色警告条（这是最容易让人找不到原因的一项）；
+  「精确定时」那项提示「未允许时提醒可能晚几分钟」
+- `system_tweaks.dart` + `MainActivity.kt`：加 `openExactAlarmSettings()`
+  （`ACTION_REQUEST_SCHEDULE_EXACT_ALARM`，Android 12+ 才有，低版本退应用详情页）
+
+测试：新增 `notification_guard_test.dart` 11 例（权限查询、非安卓不误报、
+重排不再先全撤、跨周边界——周日晚上要能算出第 4 周周一那节课）；
+`settings_page_test.dart` 加 2 例（被拒显示警告 / 已开不打扰）。
+
+**387 个测试全绿，analyze 无问题。** 版本 1.7.3+29 → **1.7.4+30**（修订位 +1）。
+
+**给凯森的话**：装完新版请去「设置 → 后台运行与提醒」展开看一眼，
+「通知权限」和「精确定时」两项都是「已开启/已允许」才算好。
+没开的话点右边按钮，按提示走一遍。
+
+### v1.7.5 **真凶**：漏声明通知接收器（凯森 2026-09-20 反馈 1.7.4 装完仍不响）
+
+凯森装完 1.7.4 后回话：**「和之前一样，课表提醒和备忘录定时都没有通知」**。
+两种提醒走同一套 `NotificationService`，所以问题一定在共同环节上。
+
+**根因在 `AndroidManifest.xml`：漏了插件要求的两个 receiver。**
+
+`flutter_local_notifications` 用 `AlarmManager` 排闹钟，但**闹钟到点不等于通知会弹**——
+它靠一个广播接收器收到 `AlarmManager` 的广播、再把通知发出来。插件 README
+（v17.2.4，第 252-263 行）明确要求 App 在自己的 `<application>` 里声明：
+
+```xml
+<receiver android:exported="false"
+    android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+<receiver android:exported="false"
+    android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+    <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED"/>
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+        <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+        <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+    </intent-filter>
+</receiver>
+```
+
+原文写得很直白：**"so that the plugin can actually show the scheduled
+notification(s)"**。
+
+**已确认插件自带的 manifest 里没有这两个**（`flutter_local_notifications-17.2.4/
+android/src/main/AndroidManifest.xml` 只有 VIBRATE + POST_NOTIFICATIONS），
+所以必须由 App 声明，不存在重复冲突。
+
+后果正是凯森遇到的：闹钟**按时排进了 AlarmManager、到点广播也发了**，
+**但没人在听** → 通知永远不出现，**且没有任何报错**。
+权限、电池优化、精确闹钟全都正常也没用。
+**也就是说：从 v1.6.0 引入通知功能开始，定时提醒就没真正跑通过。**
+前几轮改的权限提示、精确闹钟都是必要的，但都不是「完全不响」的主因。
+
+本轮改动：
+- `AndroidManifest.xml`：补上两个 receiver（带醒目注释，写明「不要删」）
+- `notification_service.dart`：加 `pendingRequests()`——**问系统实际排了几条**。
+  非安卓返回 `null` 而不是 `[]`（返回空列表会让界面显示「一条都没有」，
+  把排查带偏；null 让界面说「查不到」）
+- `settings_page.dart`：卡片里加「已排提醒」自检行，点「检查」看系统里的条数
+- `packaging_guard_test.dart`：加 3 例守卫——两个 receiver 必须在位、
+  通知相关三个权限必须在位。**这类「漏声明」编译器完全不管，只能靠测试守**
+
+**391 个测试全绿，analyze 无问题。** 版本 1.7.4+30 → **1.7.5+31**（修订位 +1）。
+
+**凯森要求：等他确认 bug 真修好了再发 GitHub Release。** 所以本轮**只出 APK，
+不发布**。
+
+### v1.7.6 继续修：装完 1.7.5 后「到点没弹通知并且闪退」
+
+凯森装了 1.7.5 之后回话：**「时间到了没有弹通知并且软件闪退了」**，
+并附了设置页截图（「已排提醒」显示「查不到」）。
+
+#### ⭐ 真凶（连上真机抓到的）：R8 擦掉了 Gson 的泛型签名
+
+凯森开了 USB 调试连上手机，才第一次拿到真正的崩溃记录。
+`adb logcat -b crash` 里有 3 条 MyDay 的崩溃，全在同一个地方：
+
+```
+09-20 22:29:59 E/AndroidRuntime: FATAL EXCEPTION: main
+  Process: com.youkeisen.my_day_phone, PID: 16295
+  java.lang.RuntimeException: Unable to start receiver
+    com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver:
+    java.lang.RuntimeException: Missing type parameter.
+  at FlutterLocalNotificationsPlugin.loadScheduledNotifications(...)
+  at FlutterLocalNotificationsPlugin.rescheduleNotifications(...)
+  at ScheduledNotificationBootReceiver.onReceive(...)
+```
+
+时间点完全对得上：22:29:59（装完 1.7.5 触发 MY_PACKAGE_REPLACED）、
+22:31:00、22:33:00 —— 凯森 22:33 发的截图就是在第三次崩溃之后。
+
+**根因**：插件 `flutter_local_notifications 17.2.4` 源码第 508 行
+
+```java
+Type type = new TypeToken<ArrayList<NotificationDetails>>() {}.getType();
+scheduledNotifications = gson.fromJson(json, type);
+```
+
+Gson 靠**匿名 TypeToken 子类的泛型签名**（class 文件里的 `Signature` 属性）
+反射拿到 `ArrayList<NotificationDetails>` 这个具体类型。
+**R8 默认会把 Signature 属性擦掉、并把 NotificationDetails 重命名**，
+Gson 于是读不到类型参数 → 抛 `Missing type parameter`。
+
+**后果链**：闹钟到点 → receiver 起来 → 读已存通知数据 → 崩 → 进程没了。
+表现就是「通知永远不弹 + App 闪退」，而且**设置页查「已排提醒」也一起崩**
+（`pendingNotificationRequests()` 走的是同一个 `loadScheduledNotifications`）——
+这就是截图上「查不到」的由来。
+
+**修法**：新增 `android/app/proguard-rules.pro` + 在 `build.gradle.kts` 的
+release 里显式 `isMinifyEnabled = true` 并挂上规则文件。最关键的两条：
+
+```proguard
+-keepattributes Signature                                  # Gson 的 TypeToken 全靠它
+-keep class com.dexterous.flutterlocalnotifications.** { *; }  # 反序列化目标类
+```
+
+另外还要保住 `com.google.gson.**`、`* extends TypeToken`、
+`* implements TypeAdapterFactory`（插件的 RuntimeTypeAdapterFactory 走这条）。
+
+**验证方式**（三道）：
+1. `mapping.txt` 里插件的类是 `原名 -> 原名`（没被重命名），
+   匿名内部类 `FlutterLocalNotificationsPlugin$1`~`$5` 也在（TypeToken 那个就是其中之一）；
+2. 真机 `adb shell am broadcast -n <pkg>/...ScheduledNotificationReceiver`
+   手动触发，crash buffer **0 条新增**（修复前每次必崩）；
+3. `dumpsys alarm` 里排上了 3 条 `RTC_WAKEUP` 精确闹钟，全部指向该 receiver。
+
+> **教训**：前四轮（v1.7.2~v1.7.5）全靠读源码猜，方向都不对。
+> 「定时通知不响」这种跨 Dart/原生/R8 的问题，**必须拿到真机崩溃记录**，
+> 不然就是在黑箱外面瞎试。**以后遇到「不响 + 闪退」，第一件事是让他开 USB 调试。**
+
+#### 顺带修的两处（这两处本身也对，但不是主因）
+
+**① 通知小图标用了彩色 launcher 图（主因）**
+
+`AndroidInitializationSettings('@mipmap/ic_launcher')` —— 安卓通知栏的小图标
+**必须是纯白剪影 + 透明背景**（系统只取 alpha 通道再染色）。
+用彩色图当小图标时，安卓会强行转成单色方块（显示成白方块），
+**部分国产 ROM（小米/OPPO 等）会认为图标不合规，在弹通知时直接崩掉进程**。
+
+修法：新增 `tools/make_notification_icon.py` 生成纯剪影图标
+（从 Cloud logo 里**只取倒三角主体并填实成剪影**——原图的 CLOUD 细字和
+描边在 24dp 下会糊成一坨，所以不整张用）。
+然后 `AndroidInitializationSettings` 和两个 `AndroidNotificationDetails.runner`
+都显式指定 `@drawable/ic_notification`。
+
+**①的后续：图标压根没进包 → 改用矢量**
+
+第一版生成的是 5 张 PNG（`drawable-{m,h,x,xx,xxx}dpi/ic_notification.png`）。
+打完包挖进 APK 里看，**5 张一张都没有**。
+
+查 `build/app/outputs/mapping/release/resources.txt` 第 208 行找到原因：
+
+```
+drawable:ic_notification:2131099676 is not reachable.
+```
+
+release 打包会跑**资源压缩（Resource Shrinker）**，它靠**静态引用**判断资源
+有没有人用。而 Dart 侧写的是**运行时字符串** `'@drawable/ic_notification'`，
+构建期的资源分析器**看不见** → 判为「没人用」→ 直接删。
+
+**走过一次弯路**：先在 `values/notification_icon.xml` 里写了个
+`<item name="ic_notification_anchor" type="drawable">@drawable/ic_notification</item>`
+当锚点。**没用**——`<item>` 是「**定义**一个新资源」，不是「**引用**一次」，
+所以 resources.txt 里锚点自己也写着 "not reachable"，图标照样被删。
+
+**正解**是 `res/raw/keep.xml`：
+
+```xml
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_notification*" />
+```
+
+加了这个之后 resources.txt 变成
+`drawable:ic_notification:2131099676 reachable from keep xml file`，
+APK 里 PNG 从 13 张变 18 张（正好多的 5 张）。
+
+**但又发现第二个问题**：包里那张 96px 的图上框 + 倒三角**变成了细描边空心框**。
+逐像素解析确认源 PNG 是对的（30.6% 不透明），说明是 **AAPT 的 PNG 优化
+重新编码时把细则丢了** —— 通知栏 24dp 下那种细线等于看不见。
+
+**定稿改用矢量 drawable** `drawable/ic_notification.xml`（24dp viewport，
+两条 path：圆角横框 + 实心倒三角），删掉那 5 张 PNG。
+矢量不走 PNG 优化，形状 100% 保真，体积也更小。这是安卓官方推荐做法。
+校验方式：解包 APK，`res/vO.xml` 里能看到两条 path **原样**存在。
+
+**② 无界面引擎上申请权限会崩**
+
+`NotificationService.init()` 里有一句 `requestNotificationsPermission()`。
+而开机的 `BootReceiver` → `BootRescheduleWorker` 拉的是**无界面 Flutter 引擎**
+（跑 `bootMain`），那里**没有 Activity**——在这种引擎上申请运行时权限会崩。
+表现就是「通知没弹 + App 崩了」。
+
+修法：`init()` 里用 `_requestPermissionOnInit` 开关包住申请逻辑；
+新增 `NotificationService.initHeadless()`；`rescheduleAll({headless})` 透传；
+`bootMain` 里调 `rescheduleAllReminders(store, headless: true)`。
+
+**顺带加固**：
+- 重排加**防重入**（`_inFlight`）——App 启动、改设置、改课表可能几乎同时触发
+  全量重排，并发会重复排通知、也更容易撞上「先撤后加」的中间态
+- `pendingRequests()` 查不到时把**真实错误**记进 `lastPendingError`，
+  设置页显示出来（只写「查不到」的话，下次还得重新猜一遍）
+
+测试：`notification_guard_test.dart` 里的 v1.7.6 守卫——
+矢量图标在位且两条 path 都在（并禁止同名 PNG 回退）、
+`raw/keep.xml` 在位且含 `tools:keep`、
+`initHeadless` 存在、`bootMain` 走 headless、重排有防重入。
+
+**APK 终检**（解 `D:\App\apk\MyDay-手机版-v1.7.6.apk`）：
+- 版本号 1.7.6 ✓（二进制 manifest 按 **UTF-16LE** 解码才搜得到）
+- 权限：`MANAGE_EXTERNAL_STORAGE` / `SCHEDULE_EXACT_ALARM` /
+  `POST_NOTIFICATIONS` / `RECEIVE_BOOT_COMPLETED` / `VIBRATE` 全在 ✓
+- 组件：`ScheduledNotificationReceiver` / `ScheduledNotificationBootReceiver` /
+  `BootReceiver` 全在 ✓
+- 通知图标：`res/vO.xml`（矢量）里两条 path 原样 ✓
+
+#### 加守卫测试
+
+`packaging_guard_test.dart` 加 4 例，守住这次的坑别再退回去：
+- `proguard-rules.pro` 存在且含 `-keepattributes Signature`（最关键那条）
+- 保住了 `com.dexterous.flutterlocalnotifications.**`
+- 保住了 Gson（`com.google.gson.**` + TypeToken 子类 + TypeAdapterFactory）
+- `build.gradle.kts` 的 release 里挂上了这个规则文件
+
+**401 个测试全绿，analyze 无问题。** 版本 1.7.5+31 → **1.7.6+32**（修订位 +1）。
+
+**仍然不发 Release，等凯森实机确认。**
+
+#### v1.7.6 补：加「测试通知」按钮（不然没法当场验证）
+
+修完之后还剩一个尴尬的问题：**怎么确认通知真的能弹**？
+排好的提醒最快也要等几分钟，最慢得等到第二天早上那节课，排查一轮要一天。
+
+所以在「设置 → 后台运行与提醒」里加了一行：
+
+> 测试通知  点一下，通知栏应该立刻弹出一条   [发一条]
+
+- `NotificationService.showTestNotification()`：走 `_plugin.show()` 立即发，
+  用的**和真实提醒完全相同的渠道和小图标**，所以它的表现能代表真实提醒。
+- 固定 id（`_idOf('__test_notification__')`），重复点是覆盖同一条，不会刷出一串。
+- 诊断价值：弹出来了 = 权限/图标/渠道都正常，只剩排程时机问题；
+  没反应 = 被系统或国产 ROM 掐了；直接闪退 = 原生层/图标有问题。
+
+顺带的好处：**我可以用 adb 自己点它验证**，不用等凯森操作
+（`uiautomator dump` 拿到坐标 → `input tap`）。
+
+#### 真机实测记录（2026-09-20 23:05~23:30）
+
+| 项 | 结果 |
+|---|---|
+| 设备 | vivo S10（V2121A），安卓 13 / API 33 |
+| 装前状态 | 1.7.5+31，通知权限 granted、精确闹钟 granted、所有文件访问 allow |
+| ① 手动触发 receiver | **0 条崩溃**（修复前每次必崩 `Missing type parameter`）|
+| ② 排上的闹钟 | 3 条 `RTC_WAKEUP` flags=9（精确）：09-21 08:00 / 09:50 / 18:50 |
+| ③ 点「发一条」测试通知 | **通知真的出现在通知栏**，crash buffer 0 条 |
+| ④ 通知小图标 | `icon=Icon(typ=RESOURCE ... id=0x7f06001c)`，反查 R.txt = **`drawable/ic_notification`** ✓ |
+
+**四道验证全部通过，修复闭环完成。**
+
+> ④ 的确认方法值得记下来：APK 里资源名被 AAPT 混淆，按名字搜不到。
+> 做法是让系统把通知的 icon 资源 id 打出来（`dumpsys notification`），
+> 再拿 id 去 `build/app/intermediates/runtime_symbol_list/release/processReleaseResources/R.txt`
+> 反查名字 —— 直接证明「包里的图标确实被系统用上了」。
+
+**adb 命令备忘**（下次直接抄）：
+```bash
+adb logcat -b crash -d          # 崩溃记录（main buffer 被 vivo 清了，crash buffer 还在）
+adb shell dumpsys alarm         # 已排闹钟
+adb shell dumpsys package <pkg> # 权限 + 版本
+adb shell am broadcast -n <pkg>/com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver
+```
+vivo 拦 USB 安装（`INSTALL_FAILED_ABORTED: User rejected permissions`），
+解法：`adb push` 到 `/sdcard/Download/` 再
+`am start -a VIEW -d file:///sdcard/Download/xxx.apk -t application/vnd.android.package-archive`
+唤起安装界面让凯森点。
 
 ## 风险
 

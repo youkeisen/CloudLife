@@ -36,6 +36,23 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+
+            // R8 混淆规则（v1.7.6 加，**不要删**）。
+            //
+            // 背景：release 打包会跑 R8。它默认会擦掉泛型签名（Signature 属性）
+            // 并重命名字段 —— 而 flutter_local_notifications 是用 Gson 反序列化的：
+            //   new TypeToken<ArrayList<NotificationDetails>>() {}.getType()
+            // Gson 全靠那段泛型签名才知道要解析成什么类型。签名没了它就抛
+            // "Missing type parameter"，于是闹钟到点 receiver 一启动就崩，
+            // 通知永远弹不出来、App 还闪退（凯森 2026-09-20 反馈的那个 bug）。
+            //
+            // proguard-rules.pro 里写了完整的 keep 规则，最关键是
+            // -keepattributes Signature 和保住 com.dexterous.** 的模型类。
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

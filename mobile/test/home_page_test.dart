@@ -203,6 +203,31 @@ void main() {
     expect(find.text('暂时取不到天气'), findsOneWidget);
   });
 
+  testWidgets('v1.6.0 第 6 条：天气卡片里没有「体感」和「风」', (tester) async {
+    setCity('示例市');
+    await pumpHome(tester);
+    // 湿度、最低/最高还在
+    expect(find.text('湿度'), findsOneWidget);
+    expect(find.text('最低 / 最高'), findsOneWidget);
+    // 体感、风按凯森要求去掉
+    expect(find.text('体感'), findsNothing);
+    expect(find.text('风'), findsNothing);
+  });
+
+  testWidgets('v1.6.0 第 5 条：天气在最上面、课程在中间、速览在最下面', (tester) async {
+    setCity('示例市');
+    await pumpHome(tester);
+
+    final wx = tester.getTopLeft(find.byKey(const ValueKey('home-card-wx'))).dy;
+    final lessons =
+        tester.getTopLeft(find.byKey(const ValueKey('home-card-lessons'))).dy;
+    final notes =
+        tester.getTopLeft(find.byKey(const ValueKey('home-card-notes'))).dy;
+
+    expect(wx, lessThan(lessons), reason: '天气要排在课程上面');
+    expect(lessons, lessThan(notes), reason: '课程要排在备忘录速览上面');
+  });
+
   testWidgets('天气：失败但有旧缓存 → 显示旧数据标注', (tester) async {
     setCity('示例市');
     store.setWeatherCache(City(name: '示例市', latitude: 30.1, longitude: 118.2),

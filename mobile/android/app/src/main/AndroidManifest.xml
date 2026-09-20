@@ -5,10 +5,13 @@
     <!-- 定位添加地点用（模糊定位优先，精确定位可选） -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-    <!-- 备忘录的定时提醒通知（Android 13+ 要运行时授权，见 NotificationService） -->
+    <!-- 备忘录/上课提醒的定时通知（Android 13+ 要运行时授权，见 NotificationService） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- 开机后把未来一周的提醒重新排一遍（v1.6.0，需求文档第 8 条） -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <!-- 提示用户把本应用加进电池优化白名单，后台才不被一刀切（v1.6.0） -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <application
         android:label="CloudLife"
         android:name="${applicationName}"
@@ -35,6 +38,19 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- 开机 / 应用更新后重排提醒（v1.6.0，需求文档第 8 条）。
+             不用前台服务、不加常驻通知：提醒排进系统闹钟后，App 被清掉也会响。 -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:directBootAware="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

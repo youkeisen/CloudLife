@@ -15,12 +15,20 @@ void main() {
       expect(s.weatherCities, isEmpty, reason: '不许预置城市');
       expect(s.weatherCity.isSet, isFalse);
       expect(s.weekStartsOn, 1);
-      expect(s.refreshMinutes, 30);
+      // v1.6.0（需求文档第 7 条）：自动刷新选项去掉，固定 10 分钟
+      expect(s.refreshMinutes, 10);
+      // v1.6.0（需求文档第 1 条）：默认课前 15 分钟提醒
+      expect(s.lessonRemindMinutes, 15);
+      // v1.6.0（需求文档第 9 条）：默认用应用目录下的 backups/
+      expect(s.backupDir, '');
       expect(s.theme, 'system');
     });
 
     test('设置 JSON 的键和电脑版一字不差', () {
-      // 抄自电脑版 app/store.py 的 DEFAULT_SETTINGS
+      // 抄自电脑版 app/store.py 的 DEFAULT_SETTINGS。
+      // v1.6.0 多了两个**手机版专属**字段：lessonRemindMinutes（上课前提醒）
+      // 和 backupDir（自定义备份位置）。这两个不会进电脑版，电脑版读我们导出的
+      // 备份时会把它们留在 extra 里原样保留，所以互通不受影响。
       final json = Settings.initial().toJson();
       expect(json.keys.toSet(), <String>{
         'version',
@@ -33,6 +41,8 @@ void main() {
         'weatherCity',
         'weatherCities',
         'refreshMinutes',
+        'lessonRemindMinutes',
+        'backupDir',
         'theme',
       });
       final city = json['weatherCity'] as Map;

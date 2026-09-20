@@ -63,7 +63,12 @@ class Store {
             'timezone': defaultTimezone,
           },
           'weatherCities': <dynamic>[],
-          'refreshMinutes': 30,
+          // v1.6.0（需求文档第 7 条）：自动刷新选项从设置里去掉，固定 10 分钟
+          'refreshMinutes': 10,
+          // v1.6.0（需求文档第 1 条）：上课前多少分钟提醒；-1 = 不提醒
+          'lessonRemindMinutes': 15,
+          // v1.6.0（需求文档第 9 条）：自定义备份位置；空 = 默认 backups/
+          'backupDir': '',
           'theme': 'system',
         };
       case 'courses':

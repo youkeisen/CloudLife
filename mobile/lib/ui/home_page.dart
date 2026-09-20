@@ -322,9 +322,8 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       const SizedBox(height: 6),
-      _kv('体感', _numText(cur['feels'], '°')),
+      // 「体感」「风」去掉（v1.6.0，需求文档第 6 条）
       _kv('湿度', _numText(cur['humidity'], '%')),
-      _kv('风', '${asString(cur['windDir'])} ${_numText(cur['wind'], ' m/s')}'),
       _kv('最低 / 最高', '${_numText(today['min'], '°')} / ${_numText(today['max'], '°')}'),
     ]);
   }
@@ -567,8 +566,9 @@ class _HomePageState extends State<HomePage> {
             ),
           ]),
         ),
-        _lessonsCard(s, week),
+        // 天气在最上面、课程在中间（v1.6.0，需求文档第 5 条）
         _weatherCard(),
+        _lessonsCard(s, week),
         _notesCard(),
       ],
     );

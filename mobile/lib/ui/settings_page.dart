@@ -8,17 +8,21 @@
 library;
 
 import 'dart:async' show TimeoutException;
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path/path.dart' as p;
 
 import '../backup.dart';
 import '../changelog.dart' show kChangelog;
+import '../lesson_reminder.dart';
 import '../models.dart';
+import '../reminder_scheduler.dart';
 import '../store.dart';
+import '../system_tweaks.dart';
 import 'wheel_time_picker.dart';
 import '../weather_api.dart';
 import '../weather_logic.dart';
@@ -29,6 +33,7 @@ class SettingsPage extends StatefulWidget {
     required this.store,
     this.onChanged,
     this.pickZip,
+    this.pickDir,
     this.api,
     this.pickTime,
     this.locate,
@@ -49,6 +54,9 @@ class SettingsPage extends StatefulWidget {
 
   /// 选一个备份 zip 的字节；返回 null 表示没选。测试注入假选择器。
   final Future<List<int>?> Function()? pickZip;
+
+  /// 选一个备份目录（v1.6.0）；返回 null 表示没选。测试注入假选择器。
+  final Future<String?> Function()? pickDir;
 
   /// 测试时注入假天气接口；不传就用真的 Open-Meteo。
   final WeatherApi? api;
@@ -80,6 +88,8 @@ class _SettingsPageState extends State<SettingsPage> {
         });
       }
     }).catchError((_) {});
+    // 电池优化状态查一次（v1.6.0，需求文档第 8 条）
+    _checkBatteryOpt();
   }
 
   @override
@@ -95,11 +105,14 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// 改一处就落一处（像电脑版一样随手存）。
+  /// v1.6.0：改完顺手重排一次提醒——上课提醒的提前量存在设置里，
+  /// 改了下拉就得让新值立刻排进系统闹钟，不然要等下次开 App 才生效。
   void _save(void Function(Settings) mutate) {
     mutate(_s);
     widget.store.saveSettings(_s);
     if (mounted) setState(() {}); // 让空态/开关状态跟着重画
     widget.onChanged?.call();
+    rescheduleAllReminders(widget.store).catchError((_) {});
   }
 
   /// 还原/清空之后把整页状态重读一遍。
@@ -112,11 +125,43 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _doBackup() async {
     try {
-      final path = saveBackupFile(widget.store, buildBackupZip(widget.store));
+      final path = saveBackupFile(widget.store, buildBackupZip(widget.store),
+          dirPath: _s.backupDir);
       _toast('已备份：${path.split('/').last.split('\\').last}');
+    } on BackupException catch (e) {
+      _toast(e.message);
     } catch (e) {
       _toast('备份失败：$e');
     }
+  }
+
+  /// 选备份位置（v1.6.0，需求文档第 9 条）。
+  /// 安卓上 file_picker 的 getDirectoryPath 会弹系统目录选择框；
+  /// 有些 ROM 不给选根目录，选不了就提示别处再试。
+  Future<void> _pickBackupDir() async {
+    String? dir;
+    try {
+      dir = widget.pickDir != null
+          ? await widget.pickDir!()
+          : await FilePicker.platform.getDirectoryPath(
+              dialogTitle: '选择备份位置');
+    } catch (e) {
+      _toast('选目录失败：$e');
+      return;
+    }
+    if (dir == null || dir.trim().isEmpty) return;
+    // 落盘前先试写一下：安卓有些目录（比如 / 根目录、别的应用私有目录）
+    // 能选中但写不进去，当场试一下比事后备份失败好懂。
+    try {
+      final probe = File(p.join(dir, '.cloudlife-write-test'));
+      probe.writeAsStringSync('ok', flush: true);
+      probe.deleteSync();
+    } catch (e) {
+      _toast('这个位置写不进去，换一个（比如「下载」目录）：$e');
+      return;
+    }
+    _save((s) => s.backupDir = dir!);
+    _toast('备份位置已设为 $dir');
   }
 
   Future<List<int>?> _pickZip() async {
@@ -175,7 +220,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (confirmed != true) return;
 
     try {
-      safetyBackup(widget.store); // 手滑也能找回来
+      safetyBackup(widget.store, dirPath: _s.backupDir); // 手滑也能找回来
       restoreBackup(widget.store, raw);
       _reload();
       _toast('还原成功');
@@ -232,13 +277,42 @@ class _SettingsPageState extends State<SettingsPage> {
     if (confirmed != true) return;
 
     try {
-      final name = safetyBackup(widget.store);
+      final name = safetyBackup(widget.store, dirPath: _s.backupDir);
       resetAllData(widget.store);
       _reload();
       _toast('已清空，备份文件：$name');
     } catch (e) {
       _toast('清空失败：$e');
     }
+  }
+
+  // ---------- 后台运行（v1.6.0，需求文档第 8 条） ----------
+
+  /// 查一下本应用是否已经在电池优化白名单里。
+  Future<void> _checkBatteryOpt() async {
+    if (!Platform.isAndroid) return;
+    try {
+      final ignored = await SystemTweaks.isBatteryOptimizationDisabled();
+      if (mounted) setState(() => _batOptIgnored = ignored);
+    } catch (_) {
+      if (mounted) setState(() => _batOptIgnored = null);
+    }
+  }
+
+  /// 跳到系统的「电池优化」页面让用户把本应用放行。
+  /// 各家 ROM 这个页面不太一样，打不开就退而求其次开应用详情页。
+  Future<void> _openBatterySettings() async {
+    try {
+      await SystemTweaks.requestIgnoreBatteryOptimizations();
+    } catch (_) {
+      try {
+        await SystemTweaks.openAppSettings();
+      } catch (e) {
+        _toast('打不开系统设置，手动去：设置 → 应用 → CloudLife → 电池');
+      }
+    }
+    // 用户可能刚放行，回来重查一次
+    await _checkBatteryOpt();
   }
 
   // ---------- 我的地点 ----------
@@ -464,9 +538,59 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
                 onChanged: (String? v) => v == null ? null : _save((s) => s.theme = v),
               )),
+          // v1.6.0（需求文档第 1 条）：上课前提醒，提前多久自己定。
+          _field('上课提醒', '课前推一条通知到通知栏；改动后会自动重排',
+              DropdownButtonFormField<int>(
+                key: const ValueKey('s-lesson-remind'),
+                initialValue: remindLeadChoices.contains(_s.lessonRemindMinutes)
+                    ? _s.lessonRemindMinutes
+                    : -1,
+                isExpanded: true,
+                items: <DropdownMenuItem<int>>[
+                  for (final m in remindLeadChoices)
+                    DropdownMenuItem<int>(value: m, child: Text(remindLeadLabel(m))),
+                ],
+                onChanged: (int? v) => v == null
+                    ? null
+                    : _save((s) => s.lessonRemindMinutes = v),
+              )),
         ]),
-        _cardCollapsible(context, '天气',
-            key: const ValueKey('s-weather-card'),
+        // v1.6.0（需求文档第 8 条）：让提醒在后台也能准时到。
+        // 不加常驻通知（凯森选的），所以这里是「引导用户放行」而不是「强留进程」。
+        _cardCollapsible(context, '后台运行与提醒',
+            key: const ValueKey('s-bg-card'),
+            toggleKey: 's-bg-toggle',
+            open: _bgOpen,
+            onToggle: () { _bgOpen = !_bgOpen; _toggleCollapse('bg'); },
+            summary: _batOptIgnored == true ? '已放行' : null,
+            children: <Widget>[
+          const Text(
+              '提醒是交给系统的闹钟来响的，App 就算被清掉到点也会通知你。'
+              '手机上做了下面这两件事，提醒会更准时：',
+              style: TextStyle(fontSize: 12, height: 1.4)),
+          const SizedBox(height: 10),
+          _dataLine(
+            '电池优化白名单',
+            _batOptIgnored == null
+                ? '查询中…'
+                : (_batOptIgnored! ? '已放行，提醒不受省电限制' : '未放行，省电模式可能推迟通知'),
+            OutlinedButton(
+              key: const ValueKey('btn-battery-opt'),
+              onPressed: _batOptIgnored == true ? null : _openBatterySettings,
+              child: Text(_batOptIgnored == true ? '已放行' : '去设置'),
+            ),
+          ),
+          if (Platform.isAndroid)
+            Padding(
+              padding: const EdgeInsets.only(left: 2),
+              child: Text(
+                '国产手机（小米 / 华为 / OPPO / vivo 等）还有一层「自启动」开关，'
+                '在系统设置 → 应用管理 → CloudLife 里打开，后台才不会被清。',
+                style: TextStyle(fontSize: 11, color: cs.outline, height: 1.4),
+              ),
+            ),
+        ]),
+        _cardCollapsible(context, '天气',            key: const ValueKey('s-weather-card'),
             toggleKey: 's-weather-toggle',
             open: _weatherOpen,
             onToggle: () { _weatherOpen = !_weatherOpen; _toggleCollapse('weather'); },
@@ -549,19 +673,16 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
           ],
           const SizedBox(height: 12),
-          _field('自动刷新', null,
-              DropdownButtonFormField<int>(
-                key: const ValueKey('s-refresh'),
-                initialValue: _s.refreshMinutes,
-                isExpanded: true,
-                items: const <DropdownMenuItem<int>>[
-                  DropdownMenuItem<int>(value: 10, child: Text('10 分钟')),
-                  DropdownMenuItem<int>(value: 30, child: Text('30 分钟')),
-                  DropdownMenuItem<int>(value: 60, child: Text('1 小时')),
-                  DropdownMenuItem<int>(value: 0, child: Text('仅手动')),
-                ],
-                onChanged: (int? v) => v == null ? null : _save((s) => s.refreshMinutes = v),
-              )),
+          // v1.6.0（需求文档第 7 条）：「自动刷新」下拉去掉了，固定 10 分钟刷新。
+          // 数值仍然存在 settings.refreshMinutes 里（电脑版备份能对上），只是不给改。
+          Row(
+            key: const ValueKey('s-refresh-fixed'),
+            children: <Widget>[
+              Text('自动刷新', style: TextStyle(fontSize: 13, color: cs.outline)),
+              const Spacer(),
+              Text('每 10 分钟', style: TextStyle(fontSize: 12, color: cs.outline)),
+            ],
+          ),
         ]),
         _cardCollapsible(context, '作息与节次（全部自定义）',
             key: const ValueKey('s-periods-card'),
@@ -605,6 +726,29 @@ class _SettingsPageState extends State<SettingsPage> {
             open: _dataOpen,
             onToggle: () { _dataOpen = !_dataOpen; _toggleCollapse('data'); },
             children: <Widget>[
+          _dataLine(
+            '备份位置',
+            _s.backupDir.isEmpty ? '默认存在应用数据目录的 backups 里' : _s.backupDir,
+            OutlinedButton(
+              key: const ValueKey('btn-backup-dir'),
+              onPressed: _pickBackupDir,
+              child: Text(_s.backupDir.isEmpty ? '选择' : '更改'),
+            ),
+          ),
+          if (_s.backupDir.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 2, bottom: 10),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  key: const ValueKey('btn-backup-dir-reset'),
+                  style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact),
+                  onPressed: () => _save((s) => s.backupDir = ''),
+                  child: const Text('恢复默认位置'),
+                ),
+              ),
+            ),
           _dataLine(
             '手动备份',
             '导出 zip，同时在本机留一份',
@@ -684,6 +828,10 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _aboutOpen = false;
   String _appVersion = '';
   String _appBuild = '';
+
+  /// 电池优化白名单状态（v1.6.0，需求文档第 8 条）：null = 还没查到。
+  bool? _batOptIgnored;
+  late bool _bgOpen = _collapseFlag('bg', false);
   late bool _periodsOpen = _collapseFlag('periods', false);
   late bool _basicOpen = _collapseFlag('basic', true);
   late bool _weatherOpen = _collapseFlag('weather', true);
@@ -714,6 +862,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return _dataOpen;
       case 'periods':
         return _periodsOpen;
+      case 'bg':
+        return _bgOpen;
     }
     return true;
   }

@@ -6,7 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'app.dart';
-import 'notification_service.dart';
+import 'reminder_scheduler.dart';
 import 'store.dart';
 
 Future<void> main() async {
@@ -21,12 +21,7 @@ Future<void> main() async {
   // 插件一慢就卡白屏（凯森反馈过）。
   runApp(MyDayApp(store: store));
 
-  unawaited(NotificationService.init().then((_) async {
-    for (final n in store.notes().notes) {
-      final at = DateTime.tryParse(n.remindAt);
-      if (at != null && at.isAfter(DateTime.now())) {
-        await NotificationService.scheduleFor(n.id, n.title, at);
-      }
-    }
-  }).catchError((_) {}));
+  // 备忘录提醒 + 上课提醒一起重排（v1.6.0：上课提醒只排未来 7 天，
+  // 每次启动续一周，安卓通知数量上限扛得住）。
+  unawaited(rescheduleAllReminders(store).catchError((_) {}));
 }

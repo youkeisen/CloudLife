@@ -97,7 +97,9 @@ void main() {
         isTrue);
 
     // 返回列表，能看到这条
-    await tester.pageBack();
+    // v1.6.0 界面中文化后，返回键的 tooltip 从 "Back" 变成「返回」，
+      // flutter_test 的 pageBack() 只认英文 tooltip，这里改成点返回图标本身
+      await tester.tap(find.byIcon(Icons.arrow_back).first);
     await tester.pumpAndSettle();
     expect(find.text('购物'), findsOneWidget);
   });
@@ -185,7 +187,9 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('field-title')), '刚敲的字');
     // 只往前走一小步，500ms 防抖还没到点
     await tester.pump(const Duration(milliseconds: 100));
-    await tester.pageBack();
+    // v1.6.0 界面中文化后，返回键的 tooltip 从 "Back" 变成「返回」，
+      // flutter_test 的 pageBack() 只认英文 tooltip，这里改成点返回图标本身
+      await tester.tap(find.byIcon(Icons.arrow_back).first);
     await tester.pumpAndSettle();
 
     expect(notesJson()['notes'].first['title'], '刚敲的字');
@@ -276,7 +280,9 @@ void main() {
     expect(notesJson()['notes'].first['archived'], isTrue);
 
     // 回列表：全部里没有，归档里有（置顶过所以带 ★ 前缀）
-    await tester.pageBack();
+    // v1.6.0 界面中文化后，返回键的 tooltip 从 "Back" 变成「返回」，
+      // flutter_test 的 pageBack() 只认英文 tooltip，这里改成点返回图标本身
+      await tester.tap(find.byIcon(Icons.arrow_back).first);
     await tester.pumpAndSettle();
     expect(find.text('会置顶'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('note-group-archived')));

@@ -99,7 +99,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('1').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('OK'));
+    // v1.6.0 起界面中文化，日期选择器的按钮变成「确定」
+    await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('week-pill')), findsOneWidget);

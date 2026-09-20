@@ -12,6 +12,7 @@ import '../import_logic.dart';
 import '../models.dart';
 import '../pdf_timetable.dart';
 import '../pdf_timetable_v2.dart';
+import '../reminder_scheduler.dart';
 import '../store.dart';
 import '../timetable.dart';
 import '../week.dart';
@@ -38,6 +39,18 @@ class CoursesPage extends StatefulWidget {
 
 class _CoursesPageState extends State<CoursesPage> {
   int _week = 1;
+
+  /// 存完课顺手重排上课提醒（v1.6.0，需求文档第 1 条）。
+  /// 加课/改课/删课/复制/清空/合并都走这里，保证通知跟着课表走。
+  void _saveCoursesWithRemind(Courses c) {
+    widget.store.saveCourses(c);
+    rescheduleAllReminders(widget.store).catchError((_) {});
+  }
+
+  void _saveWeekWithRemind(int week, List<Lesson> lessons) {
+    widget.store.saveWeek(week, lessons);
+    rescheduleAllReminders(widget.store).catchError((_) {});
+  }
 
   @override
   void initState() {
@@ -263,7 +276,7 @@ class _CoursesPageState extends State<CoursesPage> {
                 list.add(updated); // 找不到就当新增，别把改动弄丢
               }
             }
-            widget.store.saveWeek(_week, list);
+            _saveWeekWithRemind(_week, list);
             Navigator.of(ctx).pop();
             setState(() {});
             _toast('已保存');
@@ -373,7 +386,7 @@ class _CoursesPageState extends State<CoursesPage> {
                               .listWeek(_week)
                               .where((l) => l.id != lesson.id)
                               .toList();
-                          widget.store.saveWeek(_week, list);
+                          _saveWeekWithRemind(_week, list);
                           Navigator.of(ctx).pop();
                           setState(() {});
                           _toast('已删除');
@@ -471,7 +484,7 @@ class _CoursesPageState extends State<CoursesPage> {
                     final courses = widget.store.courses();
                     copyWeek(
                         courses, _week, selected.toList(), mode, widget.store.newId);
-                    widget.store.saveCourses(courses);
+                    _saveCoursesWithRemind(courses);
                     Navigator.of(ctx).pop();
                     setState(() {});
                     _toast('已复制到 ${selected.length} 周');
@@ -503,7 +516,7 @@ class _CoursesPageState extends State<CoursesPage> {
             key: const ValueKey('btn-confirm-clear'),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
-              widget.store.saveWeek(_week, <Lesson>[]);
+              _saveWeekWithRemind(_week, <Lesson>[]);
               Navigator.of(ctx).pop();
               setState(() {});
               _toast('已清空');
@@ -723,7 +736,7 @@ class _CoursesPageState extends State<CoursesPage> {
       spanEnd: '',
     ));
     courses.weeks[_week] = weekList;
-    widget.store.saveCourses(courses);
+    _saveCoursesWithRemind(courses);
     setState(() {});
     _toast('已粘贴「${src.name}」（第 $day 天 $slot）');
   }
@@ -818,7 +831,7 @@ class _CoursesPageState extends State<CoursesPage> {
       color: src?.color ?? '',
     ));
     courses.weeks[_week] = weekList;
-    widget.store.saveCourses(courses);
+    _saveCoursesWithRemind(courses);
     _exitMergeMode();
     _toast('已合并成 ${idxs.length} 节连堂');
   }

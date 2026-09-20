@@ -62,6 +62,7 @@ void main() {
   Future<void> pumpPage(
     WidgetTester tester, {
     Future<List<int>?> Function()? pickZip,
+    Future<String?> Function()? pickDir,
     WeatherApi? api,
     Future<TimeOfDay?> Function(TimeOfDay initial)? pickTime,
   }) async {
@@ -71,7 +72,11 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: SettingsPage(
-            store: store, pickZip: pickZip, api: api, pickTime: pickTime),
+            store: store,
+            pickZip: pickZip,
+            pickDir: pickDir,
+            api: api,
+            pickTime: pickTime),
       ),
     ));
     await tester.pumpAndSettle();
@@ -96,10 +101,116 @@ void main() {
     expect(find.text('天气'), findsOneWidget);
     expect(find.text('作息与节次（全部自定义）'), findsOneWidget);
     expect(find.text('数据'), findsOneWidget);
+    // v1.6.0（需求文档第 8 条）：多了「后台运行与提醒」卡片
+    expect(find.text('后台运行与提醒'), findsOneWidget);
     // v1.4.4 起：称呼输入框按凯森要求加回来了；学期名/校区仍是删掉状态
     expect(find.byKey(const ValueKey('s-name')), findsOneWidget);
     expect(find.byKey(const ValueKey('s-semester')), findsNothing);
     expect(find.byKey(const ValueKey('s-campus')), findsNothing);
+  });
+
+  group('v1.6.0 需求文档新条目', () {
+    testWidgets('第 7 条：天气「自动刷新」下拉去掉了，只显示固定的每 10 分钟', (tester) async {
+      await pumpPage(tester);
+      // 旧的下拉（key s-refresh）没有了
+      expect(find.byKey(const ValueKey('s-refresh')), findsNothing);
+      // 换成一行只读文案
+      expect(find.byKey(const ValueKey('s-refresh-fixed')), findsOneWidget);
+      expect(find.text('每 10 分钟'), findsOneWidget);
+      // 默认值就是 10 分钟
+      expect(store.settings().refreshMinutes, 10);
+    });
+
+    testWidgets('第 1 条：上课提醒下拉能选，落盘并写进 JSON', (tester) async {
+      await pumpPage(tester);
+      expect(find.byKey(const ValueKey('s-lesson-remind')), findsOneWidget);
+      // 默认提前 15 分钟
+      expect(find.text('提前 15 分钟'), findsWidgets);
+
+      await tester.tap(find.byKey(const ValueKey('s-lesson-remind')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('提前 30 分钟').last);
+      await tester.pumpAndSettle();
+
+      expect(store.settings().lessonRemindMinutes, 30);
+      expect(settingsJson()['lessonRemindMinutes'], 30);
+    });
+
+    testWidgets('第 1 条：可以选「不提醒」', (tester) async {
+      await pumpPage(tester);
+      await tester.tap(find.byKey(const ValueKey('s-lesson-remind')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('不提醒').last);
+      await tester.pumpAndSettle();
+      expect(store.settings().lessonRemindMinutes, -1);
+    });
+
+    testWidgets('第 9 条：选备份位置 → 落盘，备份 zip 落到该目录', (tester) async {
+      final target = Directory.systemTemp.createTempSync('myday-backup-dest-');
+      addTearDown(() {
+        if (target.existsSync()) target.deleteSync(recursive: true);
+      });
+
+      await pumpPage(tester, pickDir: () async => target.path);
+      await tester.tap(find.byKey(const ValueKey('btn-backup-dir')));
+      await tester.pumpAndSettle();
+      expect(store.settings().backupDir, target.path);
+
+      // 备份：zip 应该出现在自定义目录里，而不是默认的 backups/
+      await tester.tap(find.byKey(const ValueKey('btn-backup')));
+      await tester.pumpAndSettle();
+      final zips = target
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.zip'))
+          .toList();
+      expect(zips.length, 1, reason: 'zip 要落到用户选的位置');
+      expect(zips.first.lengthSync(), greaterThan(0));
+      expect(Directory('${tmp.path}/backups').existsSync(), isFalse,
+          reason: '不该再往默认位置写');
+    });
+
+    testWidgets('第 9 条：可以恢复默认备份位置', (tester) async {
+      final target = Directory.systemTemp.createTempSync('myday-backup-dest2-');
+      addTearDown(() {
+        if (target.existsSync()) target.deleteSync(recursive: true);
+      });
+      await pumpPage(tester, pickDir: () async => target.path);
+      await tester.tap(find.byKey(const ValueKey('btn-backup-dir')));
+      await tester.pumpAndSettle();
+      expect(store.settings().backupDir, target.path);
+
+      await tester.tap(find.byKey(const ValueKey('btn-backup-dir-reset')));
+      await tester.pumpAndSettle();
+      expect(store.settings().backupDir, '');
+      expect(find.byKey(const ValueKey('btn-backup-dir-reset')), findsNothing);
+    });
+
+    testWidgets('第 9 条：选了写不进去的目录 → 提示且不落盘', (tester) async {
+      // 造一个「文件」当目录用，写进去必然失败
+      final notADir = File('${tmp.path}/not-a-dir');
+      notADir.writeAsStringSync('x');
+
+      await pumpPage(tester, pickDir: () async => notADir.path);
+      await tester.tap(find.byKey(const ValueKey('btn-backup-dir')));
+      await tester.pumpAndSettle();
+
+      expect(store.settings().backupDir, '',
+          reason: '写不进去的目录不该被记住');
+      expect(find.textContaining('写不进去'), findsOneWidget);
+    });
+
+    testWidgets('第 8 条：后台运行卡片有电池优化引导', (tester) async {
+      await pumpPage(tester);
+      // 卡片默认收起 → 先展开
+      await tester.tap(find.byKey(const ValueKey('s-bg-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('btn-battery-opt')), findsOneWidget);
+      // 说明文案（「自启动」那段只在安卓上显示，测试跑在桌面 VM 上，
+      // 所以这里只断言必然存在的说明句，平台相关的文案不强求）
+      expect(find.textContaining('交给系统的闹钟'), findsOneWidget);
+    });
   });
 
   testWidgets('基本卡片默认展开，点标题收起再展开（v1.3.7）', (tester) async {
@@ -136,6 +247,8 @@ void main() {
     // 日历默认落在今天所在的月份，直接选 15 日
     await tester.tap(find.text('15').last);
     await tester.pumpAndSettle();
+    // 注意：pumpPage 用的是裸 MaterialApp，没接本地化代理，
+    // 所以这里的按钮还是英文 OK；走 MyDayApp 的 pumpApp 才是「确定」。
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
 
@@ -169,14 +282,12 @@ void main() {
     expect(Theme.of(ctx).brightness, Brightness.dark, reason: '设置完外观整棵树要重建');
   });
 
-  testWidgets('自动刷新切仅手动 → refreshMinutes = 0', (tester) async {
+  testWidgets('v1.6.0：自动刷新改成固定 10 分钟，下拉没了', (tester) async {
     await pumpPage(tester);
-    await tester.tap(find.byKey(const ValueKey('s-refresh')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('仅手动').last);
-    await tester.pumpAndSettle();
-
-    expect(store.settings().refreshMinutes, 0);
+    // 需求文档第 7 条：把设置里天气的「自动刷新」选项去掉，默认 10 分钟刷新
+    expect(find.byKey(const ValueKey('s-refresh')), findsNothing);
+    expect(store.settings().refreshMinutes, 10);
+    expect(settingsJson()['refreshMinutes'], 10);
   });
 
   group('节次', () {

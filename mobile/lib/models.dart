@@ -233,7 +233,9 @@ class Settings {
     List<Period>? periods,
     City? weatherCity,
     List<Place>? weatherCities,
-    this.refreshMinutes = 30,
+    this.refreshMinutes = 10,
+    this.lessonRemindMinutes = 15,
+    this.backupDir = '',
     this.theme = 'system',
     Map<String, dynamic>? extra,
   })  : periods = periods ?? <Period>[],
@@ -252,6 +254,14 @@ class Settings {
   List<Place> weatherCities;
   int refreshMinutes;
   String theme;
+
+  /// 上课前多少分钟提醒（v1.6.0，需求文档第 1 条）。
+  /// 0 = 不提醒；负数表示关掉。存在 extra 之外是因为手机版专属，
+  /// 电脑版读不出来会原样留在 extra 里，不影响互通。
+  int lessonRemindMinutes;
+
+  /// 自定义备份位置（v1.6.0，需求文档第 9 条）；空 = 用默认的 backups/。
+  String backupDir;
   Map<String, dynamic> extra;
 
   static const int maxPlaces = 20;
@@ -267,6 +277,8 @@ class Settings {
     'weatherCity',
     'weatherCities',
     'refreshMinutes',
+    'lessonRemindMinutes',
+    'backupDir',
     'theme',
   };
 
@@ -291,7 +303,9 @@ class Settings {
                 .map((e) => Place.fromJson(asMap(e)))
                 .toList()
             : <Place>[],
-        refreshMinutes: asInt(json['refreshMinutes'], 30),
+        refreshMinutes: asInt(json['refreshMinutes'], 10),
+        lessonRemindMinutes: asInt(json['lessonRemindMinutes'], 15),
+        backupDir: asString(json['backupDir']),
         theme: asString(json['theme']).isEmpty ? 'system' : asString(json['theme']),
         extra: extraKeys(json, known),
       );
@@ -308,6 +322,8 @@ class Settings {
         'weatherCity': weatherCity.toJson(),
         'weatherCities': weatherCities.map((p) => p.toJson()).toList(),
         'refreshMinutes': refreshMinutes,
+        'lessonRemindMinutes': lessonRemindMinutes,
+        'backupDir': backupDir,
         'theme': theme,
       };
 

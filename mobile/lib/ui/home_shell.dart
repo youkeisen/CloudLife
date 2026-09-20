@@ -21,6 +21,7 @@ class HomeShell extends StatefulWidget {
     required this.store,
     this.onSettingsChanged,
     this.pickZip,
+    this.pickDir,
     this.api,
   });
 
@@ -31,6 +32,9 @@ class HomeShell extends StatefulWidget {
 
   /// 测试钩子：透传给设置页（选备份 zip 的假实现）。
   final Future<List<int>?> Function()? pickZip;
+
+  /// 测试钩子：透传给设置页（选备份目录的假实现）。
+  final Future<String?> Function()? pickDir;
 
   /// 测试钩子：透传给设置页/功能页（假天气接口）。
   final WeatherApi? api;
@@ -144,6 +148,7 @@ class _HomeShellState extends State<HomeShell> {
         store: widget.store,
         onChanged: widget.onSettingsChanged,
         pickZip: widget.pickZip,
+        pickDir: widget.pickDir,
         api: widget.api,
       ),
     ];

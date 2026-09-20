@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'store.dart';
 import 'ui/home_shell.dart';
 import 'weather_api.dart';
 
 class MyDayApp extends StatefulWidget {
-  const MyDayApp({super.key, required this.store, this.pickZip, this.api});
+  const MyDayApp({super.key, required this.store, this.pickZip, this.pickDir, this.api});
 
   final Store store;
 
   /// 测试钩子：透传给设置页（选备份 zip 的假实现）。
   final Future<List<int>?> Function()? pickZip;
+
+  /// 测试钩子：透传给设置页（选备份目录的假实现）。
+  final Future<String?> Function()? pickDir;
 
   /// 测试钩子：透传给设置页（假天气接口）。
   final WeatherApi? api;
@@ -34,6 +38,15 @@ class _MyDayAppState extends State<MyDayApp> {
     return MaterialApp(
       title: 'CloudLife',
       debugShowCheckedModeBanner: false,
+      // 界面中文化（v1.6.0，需求文档第 4 条）：日期选择器的 Cancel/OK、
+      // 星期缩写 S M T W T F S、月份名，以及其它 Material 内置文案都走这套。
+      locale: const Locale('zh', 'CN'),
+      supportedLocales: const <Locale>[Locale('zh', 'CN'), Locale('en', 'US')],
+      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
       themeMode: themeModeFromSetting(widget.store.settings().theme),
@@ -41,6 +54,7 @@ class _MyDayAppState extends State<MyDayApp> {
         store: widget.store,
         onSettingsChanged: _onSettingsChanged,
         pickZip: widget.pickZip,
+        pickDir: widget.pickDir,
         api: widget.api,
       ),
     );

@@ -73,13 +73,29 @@ List<int> buildBackupZip(Store store, {DateTime? now}) {
   return ZipEncoder().encode(archive)!;
 }
 
-/// 把备份 zip 落到数据目录旁边的 `backups/` 里，返回完整路径。
-/// （对齐电脑版「本机也留一份」。）
-String saveBackupFile(Store store, List<int> bytes, {DateTime? now}) {
-  final out = Directory(p.join(store.dir.path, 'backups'));
-  out.createSync(recursive: true);
+/// 把备份 zip 落到指定目录里，返回完整路径。
+///
+/// [dirPath] 为空就用数据目录旁边的 `backups/`（默认行为，和电脑版一致）；
+/// v1.6.0（需求文档第 9 条）起用户可以自己指定备份位置，那时传 [dirPath]。
+String saveBackupFile(Store store, List<int> bytes,
+    {DateTime? now, String? dirPath}) {
+  final Directory out;
+  if (dirPath != null && dirPath.trim().isNotEmpty) {
+    out = Directory(dirPath.trim());
+  } else {
+    out = Directory(p.join(store.dir.path, 'backups'));
+  }
+  try {
+    out.createSync(recursive: true);
+  } catch (e) {
+    throw BackupException('备份位置用不了：$dirPath（$e）');
+  }
   final path = p.join(out.path, backupZipName(now ?? DateTime.now()));
-  File(path).writeAsBytesSync(bytes, flush: true);
+  try {
+    File(path).writeAsBytesSync(bytes, flush: true);
+  } catch (e) {
+    throw BackupException('备份位置写不进去：$dirPath（$e）');
+  }
   return path;
 }
 
@@ -142,8 +158,9 @@ Map<String, dynamic> _readDataFile(Archive archive, String name) {
 
 /// 还原前先给当前数据留一份备份（对齐电脑版 api_restore 的自动备份），
 /// 返回备份文件名（界面提示用）。
-String safetyBackup(Store store, {DateTime? now}) {
-  final path = saveBackupFile(store, buildBackupZip(store, now: now), now: now);
+String safetyBackup(Store store, {DateTime? now, String? dirPath}) {
+  final path = saveBackupFile(store, buildBackupZip(store, now: now),
+      now: now, dirPath: dirPath);
   return p.basename(path);
 }
 

@@ -282,8 +282,9 @@ void main() {
       expect(store.courses().week(2).first.name, '电脑端课程');
       expect(store.notes().notes.first.title, '电脑端备忘录');
       expect(store.weatherCache().city.name, '甲城');
-      // 电脑版 settings 里没写的字段回落默认值，不炸
-      expect(store.settings().refreshMinutes, 30);
+      // 电脑版 settings 里没写的字段回落默认值，不炸。
+      // v1.6.0：刷新间隔默认改成 10 分钟（需求文档第 7 条）
+      expect(store.settings().refreshMinutes, 10);
     });
   });
 }

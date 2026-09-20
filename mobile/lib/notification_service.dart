@@ -1,9 +1,9 @@
-/// 本地通知：备忘录的定时提醒（凯森 v1.5.0 要求）。
+/// 本地通知：备忘录定时提醒（v1.5.0）+ 上课提醒（v1.6.0）。
 ///
 /// - 用 flutter_local_notifications 的定时通知，安卓上由系统闹钟调度，
 ///   App 被杀也能响（插件自带开机重排）；
 /// - 用「非精确闹钟」模式，不申请精确闹钟权限，省一堆兼容坑；
-/// - 通知 id 用 noteId 的哈希，取消/重排都按它来。
+/// - 通知 id 用各自 id 的哈希，取消/重排都按它来。
 library;
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -34,24 +34,59 @@ class NotificationService {
 
   static int _idOf(String noteId) => noteId.hashCode & 0x7fffffff;
 
+  static const AndroidNotificationDetails _noteDetails =
+      AndroidNotificationDetails(
+    'note_reminder',
+    '备忘录提醒',
+    channelDescription: '备忘录的定时提醒通知',
+    importance: Importance.high,
+    priority: Priority.high,
+  );
+
+  static const AndroidNotificationDetails _lessonDetails =
+      AndroidNotificationDetails(
+    'lesson_reminder',
+    '上课提醒',
+    channelDescription: '上课前按设置的提前量提醒',
+    importance: Importance.high,
+    priority: Priority.high,
+  );
+
   /// 排一条提醒。[when] 应该是未来的本地时间。
   static Future<void> scheduleFor(
-      String noteId, String title, DateTime when) async {
+    String noteId,
+    String title,
+    DateTime when, {
+    String body = '到时间啦，点开看看',
+    bool lesson = false,
+  }) async {
     await init();
     await _plugin.zonedSchedule(
       _idOf(noteId),
       title.isEmpty ? '备忘录提醒' : title,
-      '到时间啦，点开看看',
+      body,
       tz.TZDateTime.from(when, tz.local),
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'note_reminder',
-          '备忘录提醒',
-          channelDescription: '备忘录的定时提醒通知',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-      ),
+      NotificationDetails(android: lesson ? _lessonDetails : _noteDetails),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+    );
+  }
+
+  /// 按 id 排一条（上课提醒用：id 由 lesson_reminder 算好）。
+  static Future<void> scheduleRaw(
+    int id,
+    String title,
+    String body,
+    DateTime when,
+  ) async {
+    await init();
+    await _plugin.zonedSchedule(
+      id,
+      title,
+      body,
+      tz.TZDateTime.from(when, tz.local),
+      const NotificationDetails(android: _lessonDetails),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
@@ -62,5 +97,11 @@ class NotificationService {
   static Future<void> cancel(String noteId) async {
     await init();
     await _plugin.cancel(_idOf(noteId));
+  }
+
+  /// 按通知 id 取消（上课提醒用）。
+  static Future<void> cancelId(int id) async {
+    await init();
+    await _plugin.cancel(id);
   }
 }

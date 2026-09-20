@@ -51,6 +51,17 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 点「导入课表」，并把 v1.6.0 新加的「说明要什么文件」弹窗过掉。
+  ///
+  /// 加这个说明弹窗是因为用户容易以为要选课表截图（截图导入验证过做不了，
+  /// 见 DEV-PLAN.md「已否决的方案」），先讲清楚再去选文件。
+  Future<void> tapImport(WidgetTester tester) async {
+    await tester.tap(find.byKey(const ValueKey('btn-import')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('import-help-go')));
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('导入流程：选文件 → 确认覆盖 → 课表出现', (tester) async {
     final bytes = smallTimetableXlsx();
     await tester.pumpWidget(MaterialApp(
@@ -63,8 +74,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('btn-import')));
-    await tester.pumpAndSettle();
+    await tapImport(tester);
     expect(find.text('确认导入课表'), findsOneWidget);
     expect(find.textContaining('1 门课'), findsOneWidget);
 
@@ -93,8 +103,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('btn-import')));
-    await tester.pumpAndSettle();
+    await tapImport(tester);
     await tester.tap(find.byKey(const ValueKey('import-cancel')));
     await tester.pumpAndSettle();
 
@@ -113,8 +122,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('btn-import')));
-    await tester.pumpAndSettle();
+    await tapImport(tester);
     expect(find.textContaining('不是 xlsx'), findsOneWidget);
     expect(store.courses().weeks, isEmpty);
     await pastToast(tester);

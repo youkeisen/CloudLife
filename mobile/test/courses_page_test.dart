@@ -297,4 +297,93 @@ void main() {
     await tester.tap(find.text('知道了'));
     await tester.pumpAndSettle();
   });
+
+  group('导入课表（v1.6.0 第 2 条：说明要什么文件）', () {
+    testWidgets('点「导入课表」先弹说明，讲清能导什么、去哪拿', (tester) async {
+      addPeriods();
+      await pumpPage(tester);
+      await tester.tap(find.byKey(const ValueKey('btn-import')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('能导入这两种文件：'), findsOneWidget);
+      expect(find.textContaining('xlsx'), findsOneWidget);
+      expect(find.textContaining('怎么拿到'), findsOneWidget,
+          reason: '要告诉用户去哪拿文件');
+      expect(find.textContaining('手机浏览器打开教务系统'), findsOneWidget);
+      // 截图这条路验证过做不了，得明确劝退
+      expect(find.textContaining('截图导不了'), findsOneWidget);
+      // 这时候还没去选文件
+      expect(find.text('去选文件'), findsOneWidget);
+    });
+
+    testWidgets('说明里点「取消」→ 不去选文件', (tester) async {
+      addPeriods();
+      var picked = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: CoursesPage(
+            store: store,
+            pickTimetable: () async {
+              picked = true;
+              return null;
+            },
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('btn-import')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('import-help-cancel')));
+      await tester.pumpAndSettle();
+
+      expect(picked, isFalse, reason: '取消了就不该去调文件选择器');
+    });
+
+    testWidgets('点「去选文件」才会去调文件选择器', (tester) async {
+      addPeriods();
+      var picked = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: CoursesPage(
+            store: store,
+            pickTimetable: () async {
+              picked = true;
+              return null; // 用户没选就退出
+            },
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('btn-import')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('import-help-go')));
+      await tester.pumpAndSettle();
+
+      expect(picked, isTrue);
+    });
+
+    testWidgets('选了个不是课表的文件 → 提示读不出来，不崩', (tester) async {
+      addPeriods();
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: CoursesPage(
+            store: store,
+            pickTimetable: () async => <int>[1, 2, 3, 4, 5],
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('btn-import')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('import-help-go')));
+      await tester.pumpAndSettle();
+
+      // 有个 toast 说明读不了，且页面还在
+      expect(find.byType(CoursesPage), findsOneWidget);
+      await pastToast(tester);
+    });
+  });
 }

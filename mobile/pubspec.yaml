@@ -16,12 +16,12 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-# 1.6.0：按凯森桌面文档「0.有时进入软件_.docx」的第 1、4、5、6、7、8、9 条改：
-# 上课前定时提醒（提前多久可设）、界面英文改中文、首页天气置顶+课程居中、
-# 天气去掉风和体感、去掉天气自动刷新开关（固定 10 分钟）、
-# 开机重排提醒+电池优化引导（不加常驻通知）、备份位置可自定义。
-# 加功能 → 次位 +1，构建号 +1（上一个安装包是 1.5.2+23）。
-version: 1.6.0+24
+# 1.6.1：需求文档第 2 条（导入课表）的落地方式调整 —— 原本想做的「相册选课表
+# 截图 OCR 识别」经验证做不通（教务系统的彩色课块没有边界，OCR 认不准，
+# 详见 DEV-PLAN.md「已否决的方案」），改成把现有的 xlsx / PDF 导入入口做清楚：
+# 按钮改名「导入课表」，点之前先说明能导什么、去哪拿，并明确劝退截图。
+# 修 bug/小改进 → 修订位 +1，构建号 +1（上一个安装包是 1.6.0+24）。
+version: 1.6.1+25
 
 environment:
   sdk: ^3.13.3

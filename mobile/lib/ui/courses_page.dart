@@ -110,6 +110,12 @@ class _CoursesPageState extends State<CoursesPage> {
   }
 
   Future<void> _importTimetable() async {
+    // 先说清楚要什么文件、去哪拿，再让用户去选——
+    // 否则用户很容易以为要选课表截图（截图这条路验证过做不了，
+    // 见 DEV-PLAN.md「已否决的方案」）。
+    final go = await _explainImportFile();
+    if (go != true || !mounted) return;
+
     List<int>? bytes;
     try {
       bytes = await _pickTimetable();
@@ -141,6 +147,52 @@ class _CoursesPageState extends State<CoursesPage> {
     } on TimetableError catch (e) {
       _toast(e.message);
     }
+  }
+
+  /// 选文件前的说明。返回 true 表示用户确认要去选文件了。
+  Future<bool?> _explainImportFile() {
+    final cs = Theme.of(context).colorScheme;
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('导入课表'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Text('能导入这两种文件：'),
+            const SizedBox(height: 6),
+            const Text('· Excel 课表（.xlsx）'),
+            const Text('· 课表 PDF'),
+            const SizedBox(height: 10),
+            Text(
+              '怎么拿到：用手机浏览器打开教务系统，'
+              '把课表导出成 Excel 或 PDF，下载到手机里，'
+              '再回这里选它。',
+              style: TextStyle(fontSize: 12, color: cs.outline),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '课表截图导不了（教务系统的彩色课块认不准），'
+              '请用导出的文件。',
+              style: TextStyle(fontSize: 12, color: cs.outline),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            key: const ValueKey('import-help-cancel'),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            key: const ValueKey('import-help-go'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('去选文件'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<String?> _askImportMode(ImportPlan plan) {
@@ -566,7 +618,7 @@ class _CoursesPageState extends State<CoursesPage> {
               key: const ValueKey('btn-import'),
               onPressed: _importTimetable,
               icon: const Icon(Icons.upload_file, size: 18),
-              label: const Text('导入'),
+              label: const Text('导入课表'),
             ),
             const Spacer(),
             Text('本周 ${lessons.length} 节课',

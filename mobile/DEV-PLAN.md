@@ -38,6 +38,16 @@ pubspec.yaml 写成 `主.次.修订+构建号`，构建号每出一个安装包 
 3. 小凯提交并推送（commit 信息里写清版本与改动）；
 4. 小凯用 GitHub API 发 Release：tag `mobile-vX.Y.Z`、标题=版本名、描述=更新内容、
    附件传 APK（令牌走 git credential fill，不落盘不进日志）；
+   **现在用 `py -3 tools/release.py <tag> --title "CloudLife vX.Y.Z" --notes-file <md> --apk <路径>`**，
+   踩过的三个坑（都已修在脚本里）：
+   - **asset 名不能用中文**：中文放进 URL 会让 urllib 用 ascii 编码报
+     `UnicodeEncodeError`。脚本默认按 `MyDay-vX.Y.Z.apk` 命名。
+   - **传附件必须走 `uploads.github.com`**（用 release 对象里的 `upload_url`），
+     打 `api.github.com/.../assets` 是 404。
+   - **别传 `target_commitish` 短 SHA**，GitHub 会回 422
+     （`tag_name is not a valid tag` + `invalid target_commitish`）。
+     不传，让它用默认分支 HEAD。
+   - 补传附件（release 已建但没传上）加 `--upload-only`。
 5. 凯森在手机上下载安装（覆盖装数据保留）。
 
 ## 依赖（尽量少）

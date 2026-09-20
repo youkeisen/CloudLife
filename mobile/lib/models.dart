@@ -701,3 +701,195 @@ class WeatherCache {
         'payload': payload,
       };
 }
+
+// ---------- 记账（v1.7.0，需求文档第 3 条） ----------
+//
+// 设计稿（桌面文档里的 image2）用的是 SQLite 两张表：
+//   categories(id, name, icon, sort)
+//   records(id, amount, category_id, date, note, created_at)
+// 这里沿用项目的 JSON 存储（要和电脑版备份互通），字段名照设计稿，
+// 只是把 SQLite 的 id/外键换成了字符串 id。
+//
+// 记账是手机版独有的模块，电脑版暂时没有，所以这里没有「必须和电脑版
+// 一字不差」的约束；但每份数据都带 extra，保持和其他模块一致的习惯。
+
+/// 记账分类。icon 存的是图标标识（见 ledger_icons.dart 的映射表），
+/// 不存图片，避免把资源文件塞进数据里。
+class LedgerCategory {
+  LedgerCategory({
+    required this.id,
+    required this.name,
+    this.icon = 'other',
+    this.sort = 0,
+    Map<String, dynamic>? extra,
+  }) : extra = extra ?? <String, dynamic>{};
+
+  final String id;
+  final String name;
+  final String icon;
+  final int sort;
+  final Map<String, dynamic> extra;
+
+  static const Set<String> known = {'id', 'name', 'icon', 'sort'};
+
+  factory LedgerCategory.fromJson(Map<String, dynamic> json) {
+    return LedgerCategory(
+      id: asString(json['id']),
+      name: asString(json['name']),
+      icon: asString(json['icon']),
+      sort: asInt(json['sort'], 0),
+      extra: extraKeys(json, known),
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        ...extra,
+        'id': id,
+        'name': name,
+        'icon': icon,
+        'sort': sort,
+      };
+
+  LedgerCategory copyWith({String? name, String? icon, int? sort}) {
+    return LedgerCategory(
+      id: id,
+      name: name ?? this.name,
+      icon: icon ?? this.icon,
+      sort: sort ?? this.sort,
+      extra: extra,
+    );
+  }
+}
+
+/// 一笔账。
+///
+/// amount 存的是**正数**（元），方向由 kind 决定（支出 / 收入）；
+/// 这样改了方向不用改金额，也避免「负负得正」这类算术坑。
+class LedgerRecord {
+  LedgerRecord({
+    required this.id,
+    required this.amount,
+    required this.categoryId,
+    required this.date,
+    this.note = '',
+    this.createdAt = '',
+    this.kind = ledgerKindExpense,
+    Map<String, dynamic>? extra,
+  }) : extra = extra ?? <String, dynamic>{};
+
+  final String id;
+  final double amount;
+  final String categoryId;
+
+  /// `YYYY-MM-DD`
+  final String date;
+  final String note;
+  final String createdAt;
+
+  /// `expense` 支出 / `income` 收入
+  final String kind;
+  final Map<String, dynamic> extra;
+
+  static const Set<String> known = {
+    'id', 'amount', 'categoryId', 'date', 'note', 'createdAt', 'kind',
+  };
+
+  bool get isIncome => kind == ledgerKindIncome;
+
+  /// 带符号的金额：支出负、收入正。汇总时直接用。
+  double get signed => isIncome ? amount : -amount;
+
+  factory LedgerRecord.fromJson(Map<String, dynamic> json) {
+    final kind = asString(json['kind']);
+    return LedgerRecord(
+      id: asString(json['id']),
+      // 金额兜底成 0，负数也掰成正数（方向归 kind 管）
+      amount: (asDoubleOrNull(json['amount']) ?? 0).abs(),
+      categoryId: asString(json['categoryId']),
+      date: asString(json['date']),
+      note: asString(json['note']),
+      createdAt: asString(json['createdAt']),
+      kind: kind == ledgerKindIncome ? ledgerKindIncome : ledgerKindExpense,
+      extra: extraKeys(json, known),
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        ...extra,
+        'id': id,
+        'amount': amount,
+        'categoryId': categoryId,
+        'date': date,
+        'note': note,
+        'createdAt': createdAt,
+        'kind': kind,
+      };
+
+  LedgerRecord copyWith({
+    double? amount,
+    String? categoryId,
+    String? date,
+    String? note,
+    String? kind,
+  }) {
+    return LedgerRecord(
+      id: id,
+      amount: amount ?? this.amount,
+      categoryId: categoryId ?? this.categoryId,
+      date: date ?? this.date,
+      note: note ?? this.note,
+      createdAt: createdAt,
+      kind: kind ?? this.kind,
+      extra: extra,
+    );
+  }
+}
+
+const String ledgerKindExpense = 'expense';
+const String ledgerKindIncome = 'income';
+
+/// 一整份记账数据（对应一个 ledger 文件）。
+class Ledger {
+  Ledger({
+    List<LedgerCategory>? categories,
+    List<LedgerRecord>? records,
+    Map<String, dynamic>? extra,
+  })  : categories = categories ?? <LedgerCategory>[],
+        records = records ?? <LedgerRecord>[],
+        extra = extra ?? <String, dynamic>{};
+
+  List<LedgerCategory> categories;
+  List<LedgerRecord> records;
+  final Map<String, dynamic> extra;
+
+  static const Set<String> known = {'version', 'categories', 'records'};
+
+  factory Ledger.fromJson(Map<String, dynamic> json) {
+    final cats = json['categories'];
+    final recs = json['records'];
+    return Ledger(
+      categories: cats is List
+          ? cats
+              .whereType<Map>()
+              .map((e) => LedgerCategory.fromJson(asMap(e)))
+              .where((c) => c.id.isNotEmpty)
+              .toList()
+          : <LedgerCategory>[],
+      records: recs is List
+          ? recs
+              .whereType<Map>()
+              .map((e) => LedgerRecord.fromJson(asMap(e)))
+              .where((r) => r.id.isNotEmpty)
+              .toList()
+          : <LedgerRecord>[],
+      extra: extraKeys(json, known),
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        ...extra,
+        'version': schemaVersion,
+        'categories': categories.map((c) => c.toJson()).toList(),
+        'records': records.map((r) => r.toJson()).toList(),
+      };
+}

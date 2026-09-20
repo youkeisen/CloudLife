@@ -13,6 +13,7 @@ import 'dart:math';
 
 import 'package:path/path.dart' as p;
 
+import 'ledger_icons.dart' show defaultLedgerCategories;
 import 'models.dart';
 import 'week.dart' show pad2;
 
@@ -33,12 +34,20 @@ class Store {
   final Random _random = Random();
 
   /// 四份数据文件（顺序也照电脑版）。
+  ///
+  /// **记账（ledger）不在这里**：它是手机版独有的模块，电脑版没有。
+  /// 备份时额外打进去（见 backup.dart），但电脑版还原时只看这四份、
+  /// 会忽略多出来的 ledger.json，所以两边都不会炸。
   static const List<String> fileNames = <String>[
     'settings',
     'courses',
     'notes',
     'weather_cache',
   ];
+
+  /// 记账数据文件名。单独列出来是因为它不进 `fileNames`（不参与
+  /// 「四份必须齐」的校验），但备份/清空/读写都要照顾到它。
+  static const String ledgerFile = 'ledger';
 
   List<StoreWarning> get warnings => List<StoreWarning>.unmodifiable(_warnings);
   void clearWarnings() => _warnings.clear();
@@ -81,6 +90,14 @@ class Store {
           'fetchedAt': '',
           'city': <String, dynamic>{'name': '', 'latitude': null, 'longitude': null},
           'payload': null,
+        };
+      case 'ledger':
+        // v1.7.0（需求文档第 3 条）：记账。分类留给首次打开时按默认表建，
+        // 这里保持空——零预置原则，不塞任何跟凯森个人有关的东西。
+        return <String, dynamic>{
+          'version': schemaVersion,
+          'categories': <dynamic>[],
+          'records': <dynamic>[],
         };
       default:
         throw ArgumentError('未知的数据文件：$name');
@@ -189,6 +206,30 @@ class Store {
       return b.updatedAt.compareTo(a.updatedAt);
     });
     return list;
+  }
+
+  // ---------- 记账（v1.7.0，需求文档第 3 条） ----------
+
+  Ledger ledger() => Ledger.fromJson(read(ledgerFile));
+
+  void saveLedger(Ledger l) => write(ledgerFile, l.toJson());
+
+  /// 首次打开记账时按默认表把分类建好（只建一次——建过就不再动，
+  /// 用户删掉的分类不会被「补回来」）。
+  ///
+  /// 判断依据是文件里有没有 categories 这个键被显式写过，而不是「列表空」：
+  /// 用户完全可能把分类删光，那时不该又冒出默认分类。
+  Ledger ensureLedgerSeed() {
+    final obj = read(ledgerFile);
+    final hasSeed =
+        (obj['catsSeeded'] as dynamic) == true || (obj['catsSeeded'] as dynamic) == 1;
+    final l = Ledger.fromJson(obj);
+    if (hasSeed) return l;
+    l.categories = defaultLedgerCategories();
+    // 标记已种过。用 extra 背着这个标记，Ledger.fromJson/toJson 会原样带着它。
+    l.extra['catsSeeded'] = true;
+    saveLedger(l);
+    return l;
   }
 
   // ---------- 天气缓存 ----------

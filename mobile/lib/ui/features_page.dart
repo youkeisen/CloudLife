@@ -10,6 +10,7 @@ import '../store.dart';
 import '../weather_api.dart';
 import 'courses_page.dart';
 import 'glass.dart';
+import 'ledger_page.dart';
 import 'notes_page.dart';
 import 'weather_page.dart';
 
@@ -61,6 +62,13 @@ class FeaturesPage extends StatelessWidget {
         desc: '笔记与清单，可置顶归档',
         icon: Icons.edit_note_outlined,
         onTap: () => _open(context, '备忘录', NotesPage(store: store)),
+      ),
+      _Feature(
+        key: 'feat-ledger',
+        title: '记账',
+        desc: '记每笔收支，按月看合计',
+        icon: Icons.account_balance_wallet_outlined,
+        onTap: () => _open(context, '记账', LedgerPage(store: store)),
       ),
     ];
 

@@ -235,4 +235,116 @@ void main() {
       expect(() => Store.defaultsFor('不存在'), throwsArgumentError);
     });
   });
+
+  group('记账数据（v1.7.0，需求文档第 3 条）', () {
+    test('ledger 不在四份里，但默认值能取到', () {
+      expect(Store.fileNames.contains('ledger'), isFalse,
+          reason: '记账是手机版独有的，不能混进和电脑版对齐的四份里');
+      expect(Store.ledgerFile, 'ledger');
+      final d = Store.defaultsFor('ledger');
+      expect(d['categories'], isEmpty);
+      expect(d['records'], isEmpty);
+    });
+
+    test('没有 ledger.json 时读出来是空账本，不崩', () {
+      store.init();
+      expect(store.fileFor('ledger').existsSync(), isFalse);
+      final l = store.ledger();
+      expect(l.categories, isEmpty);
+      expect(l.records, isEmpty);
+      // 读一次会自动建出来（read 的行为），之后文件就在了
+      expect(store.fileFor('ledger').existsSync(), isTrue);
+    });
+
+    test('存了再读，字段不丢', () {
+      store.init();
+      store.saveLedger(Ledger(
+        categories: <LedgerCategory>[
+          LedgerCategory(id: 'c1', name: '餐饮', icon: 'food', sort: 10),
+        ],
+        records: <LedgerRecord>[
+          LedgerRecord(
+            id: 'r1', amount: 32, categoryId: 'c1', date: '2026-09-20',
+            note: '点点·二分奶茶', createdAt: '2026-09-20T12:00:00',
+          ),
+        ],
+      ));
+      final l = store.ledger();
+      expect(l.categories.single.name, '餐饮');
+      expect(l.categories.single.icon, 'food');
+      expect(l.records.single.amount, 32);
+      expect(l.records.single.note, '点点·二分奶茶');
+      expect(l.records.single.date, '2026-09-20');
+    });
+
+    test('首次种默认分类；种过之后不再补（用户删光也不重生）', () {
+      store.init();
+      final first = store.ensureLedgerSeed();
+      expect(first.categories, isNotEmpty);
+
+      // 用户把分类全删了
+      first.categories = <LedgerCategory>[];
+      store.saveLedger(first);
+      final second = store.ensureLedgerSeed();
+      expect(second.categories, isEmpty,
+          reason: '删光分类是用户的选择，不能又给他长回来');
+    });
+
+    test('种过标记写进了数据文件（重启也认）', () {
+      store.init();
+      store.ensureLedgerSeed();
+      final raw = store.read('ledger');
+      expect(raw['catsSeeded'], isTrue);
+    });
+
+    test('认不出的字段原样留着（跨版本不丢数据）', () {
+      store.init();
+      store.write('ledger', <String, dynamic>{
+        'version': 1,
+        'categories': <dynamic>[],
+        'records': <dynamic>[],
+        '将来才有的字段': '别丢',
+      });
+      final l = store.ledger();
+      expect(l.extra['将来才有的字段'], '别丢');
+      expect(l.toJson()['将来才有的字段'], '别丢');
+    });
+
+    test('坏记录被过滤掉，好记录还能读', () {
+      store.init();
+      store.write('ledger', <String, dynamic>{
+        'version': 1,
+        'categories': <dynamic>[
+          <String, dynamic>{'id': 'c1', 'name': '餐饮', 'icon': 'food', 'sort': 0},
+          <String, dynamic>{'name': '没有 id 的坏分类'},
+        ],
+        'records': <dynamic>[
+          <String, dynamic>{
+            'id': 'r1', 'amount': 10, 'categoryId': 'c1',
+            'date': '2026-09-20', 'kind': 'expense',
+          },
+          <String, dynamic>{'amount': 20}, // 没 id，丢掉
+        ],
+      });
+      final l = store.ledger();
+      expect(l.categories, hasLength(1));
+      expect(l.records, hasLength(1));
+      expect(l.records.single.id, 'r1');
+    });
+
+    test('认不出的 kind 当支出处理（宁可少算收入也别多算）', () {
+      store.init();
+      store.write('ledger', <String, dynamic>{
+        'version': 1,
+        'categories': <dynamic>[],
+        'records': <dynamic>[
+          <String, dynamic>{
+            'id': 'r1', 'amount': 10, 'categoryId': 'c1',
+            'date': '2026-09-20', 'kind': '这是什么鬼',
+          },
+        ],
+      });
+      expect(store.ledger().records.single.isIncome, isFalse);
+    });
+  });
 }

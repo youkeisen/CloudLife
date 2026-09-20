@@ -66,12 +66,11 @@ def call(tok, path, method='GET', body=None, raw=None, content_type='application
 
 
 def main():
-    # 命名规矩（凯森 2026-09-21 纠正过，以后别再写错）：
-    #   Release 标题一律 `CloudLife 手机版 vX.Y.Z`
+    # 命名规矩（凯森 2026-09-21 连着纠正了两次，以后照这个来）：
+    #   Release 标题一律 `CloudLife vX.Y.Z` —— **不要加「手机版」三个字**
     #   asset 一律 `CloudLife-vX.Y.Z.apk`
-    # 历史上（v1.1.1 ~ v1.6.1）标题是 `CloudLife vX.Y.Z`，所以叫 CloudLife 不会突兀；
-    # 而 v1.7.6 / v1.8.0 我写成过 `MyDay 手机版`，跟前面二十多个版本不一致，
-    # 已经把这两个标题 PATCH 回来了。**MyDay 是电脑版的名字，手机版是 CloudLife。**
+    # 也别写成 MyDay（那是电脑版的名字）。历史上 v1.1.1 ~ v1.6.1
+    # 二十多个版本标题全是 `CloudLife vX.Y.Z`，照这个来就不会突兀。
     ap = argparse.ArgumentParser()
     ap.add_argument('tag')
     ap.add_argument('--title')

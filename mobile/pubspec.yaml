@@ -16,9 +16,9 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-# 1.5.1：节次列 56→62、时间文字允许换行，修「08:10 – 0…」显示不全。
-# 构建号 +1（上一个安装包是 1.5.0+21）。
-version: 1.5.1+22
+# 1.5.2：修偶发卡白屏——通知初始化/重排提醒从 runApp 前挪到后台异步做。
+# 构建号 +1（上一个安装包是 1.5.1+22）。
+version: 1.5.2+23
 
 environment:
   sdk: ^3.13.3

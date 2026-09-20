@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -16,14 +17,16 @@ Future<void> main() async {
   final store = Store(Directory(p.join(docs.path, 'MyDay')));
   store.init();
 
-  // 备忘录定时提醒：初始化通知 + 把还没到点的提醒重新排上
-  await NotificationService.init();
-  for (final n in store.notes().notes) {
-    final at = DateTime.tryParse(n.remindAt);
-    if (at != null && at.isAfter(DateTime.now())) {
-      await NotificationService.scheduleFor(n.id, n.title, at);
-    }
-  }
-
+  // 先把界面跑起来！通知初始化/重排提醒放后台做——v1.5.0 放在 runApp 前，
+  // 插件一慢就卡白屏（凯森反馈过）。
   runApp(MyDayApp(store: store));
+
+  unawaited(NotificationService.init().then((_) async {
+    for (final n in store.notes().notes) {
+      final at = DateTime.tryParse(n.remindAt);
+      if (at != null && at.isAfter(DateTime.now())) {
+        await NotificationService.scheduleFor(n.id, n.title, at);
+      }
+    }
+  }).catchError((_) {}));
 }

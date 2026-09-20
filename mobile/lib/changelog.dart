@@ -5,6 +5,12 @@ library;
 /// (版本号, 变更列表)
 const List<(String, List<String>)> kChangelog = <(String, List<String>)>[
   (
+    '1.5.2',
+    <String>[
+      '修偶发卡白屏：通知初始化挪到界面起来之后在后台做，不再挡启动',
+    ],
+  ),
+  (
     '1.5.1',
     <String>[
       '节次列加宽 + 时间允许换两行，起止时间不再显示成省略号',

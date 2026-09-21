@@ -232,5 +232,46 @@ void main() {
           reason: 'App 启动/改设置/改课表可能同时触发重排，并发会重复排通知');
     });
   });
+
+  // ---------- v1.8.2：每天重复的提醒不能被当成过期撤掉 ----------
+  //
+  // 这是「加每天选项」最容易踩的坑：重排那段原本的逻辑是
+  // 「remindAt 已经过去 → 撤掉通知」，这对单次是对的，
+  // 但每天重复的提醒存的本来就是**很久以前的**那个时刻 ——
+  // 照原逻辑一重排（每次 App 启动都会）就把它撤了，用户第二天就收不到了。
+  group('每天重复的提醒（v1.8.2）', () {
+    late String src;
+
+    setUpAll(() {
+      src = File('lib/reminder_scheduler.dart').readAsStringSync();
+    });
+
+    test('重排时对每天的提醒单独处理，不跟单次共用「过期就撤」', () {
+      expect(src.contains('remindDaily'), isTrue,
+          reason: '重排里必须先判断是不是每天，否则过期分支会把它撤掉');
+      expect(src.contains('nextDailyOccurrence'), isTrue,
+          reason: '每天的要现算下一次时刻（插件只排未来的时间）');
+      expect(src.contains('repeatDaily: true'), isTrue,
+          reason: '排的时候要带上每天重复参数');
+    });
+
+    test('每天那条分支在「过期撤销」之前就 continue 掉', () {
+      // 用位置判断：daily 分支必须出现在 `!when.isAfter(now)` 这个过期判断之前。
+      final dailyAt = src.indexOf('if (n.remindDaily)');
+      final expiredAt = src.indexOf('!when.isAfter(now)');
+      expect(dailyAt, greaterThan(-1), reason: '找不到每天的分支');
+      expect(expiredAt, greaterThan(-1), reason: '找不到过期判断');
+      expect(dailyAt, lessThan(expiredAt),
+          reason: '顺序反了的话每天的提醒会先被撤掉，第二天就不响了');
+    });
+
+    test('通知层确实用了按时间重复（DateTimeComponents.time）', () {
+      final notif = File('lib/notification_service.dart').readAsStringSync();
+      expect(notif.contains('matchDateTimeComponents'), isTrue,
+          reason: '不带这个参数就只响一次');
+      expect(notif.contains('DateTimeComponents.time'), isTrue,
+          reason: '按「时:分」重复才是每天，DateTimeComponents 别的值语义不同');
+    });
+  });
 }
 

@@ -37,6 +37,16 @@ double? asDoubleOrNull(dynamic v) {
 
 bool asBool(dynamic v) => v == true || v == 'true' || v == 1;
 
+/// 规范提醒方式：只认 daily / days，**别的一律当单次**。
+///
+/// 写成函数是为了只有一处判断——以后加一种方式只改这里，
+/// 而且「认不出来的值」有统一行为（当单次，不引入没实现的行为）。
+String _normRepeat(String raw) {
+  if (raw == Note.remindRepeatDaily) return Note.remindRepeatDaily;
+  if (raw == Note.remindRepeatDays) return Note.remindRepeatDays;
+  return '';
+}
+
 List<String> asStringList(dynamic v) {
   if (v is! List) return <String>[];
   return v.map(asString).where((s) => s.isNotEmpty).toList();
@@ -517,15 +527,15 @@ class Note {
     this.type = NoteType.text,
     this.body = '',
     List<NoteItem>? items,
-    List<String>? tags,
     this.pinned = false,
     this.archived = false,
     this.createdAt = '',
     this.updatedAt = '',
     this.remindAt = '',
+    this.remindRepeat = '',
+    this.remindDays = 0,
     Map<String, dynamic>? extra,
   })  : items = items ?? <NoteItem>[],
-        tags = tags ?? <String>[],
         extra = extra ?? <String, dynamic>{};
 
   String id;
@@ -533,14 +543,37 @@ class Note {
   String type;
   String body;
   List<NoteItem> items;
-  List<String> tags;
+
+  /// v1.9.0：**标签字段已删除**（凯森要求「把笔记里的标签删除」「数据一起清掉」）。
+  /// 存量数据由 `Store.init()` 里的一次性清理负责抹掉。
   bool pinned;
   bool archived;
   String createdAt;
   String updatedAt;
 
   /// 定时提醒的 ISO 时间；空 = 不提醒（凯森 v1.5.0 要求的定时通知）。
+  ///
+  /// [remindRepeat] 为 [remindRepeatDaily] 时，只有时:分有意义
+  /// （日期部分只是「设的时候的基准」，重排时会算成下一次该响的时刻）。
   String remindAt;
+
+  /// 重复方式（v1.8.2 加「每天」，v1.9.1 加「N 天后」）：
+  /// '' = 单次（最近的那个时:分，响一次），
+  /// [remindRepeatDaily] = 每天，
+  /// [remindRepeatDays] = [remindDays] 天后的那个时:分，响一次。
+  String remindRepeat;
+
+  /// 「N 天后」的那个 N（只在 [remindRepeatDays] 时有用）。
+  int remindDays;
+
+  static const String remindRepeatDaily = 'daily';
+  static const String remindRepeatDays = 'days';
+
+  /// 是不是每天重复。
+  bool get remindDaily => remindRepeat == remindRepeatDaily;
+
+  /// 是不是「N 天后」。
+  bool get remindAfterDays => remindRepeat == remindRepeatDays;
   Map<String, dynamic> extra;
 
   static const Set<String> known = {
@@ -549,12 +582,17 @@ class Note {
     'type',
     'body',
     'items',
+    // 'tags' 特意留在这里：这个字段已经不用了，但**不能从 known 里删** ——
+    // extraKeys 会把「不认识」的键收进 extra 再原样写回去（见 v1.9.0 DEV-PLAN），
+    // 删了反而把旧数据永久留在文件里。留着它，读进来就丢、写出去就没有。
     'tags',
     'pinned',
     'archived',
     'createdAt',
     'updatedAt',
     'remindAt',
+    'remindRepeat',
+    'remindDays',
   };
 
   bool get isTodo => type == NoteType.todo;
@@ -577,12 +615,15 @@ class Note {
         items: (json['items'] is List)
             ? (json['items'] as List).map((e) => NoteItem.fromJson(asMap(e))).toList()
             : <NoteItem>[],
-        tags: asStringList(json['tags']),
+        // 旧数据里的 tags 直接丢掉（标签功能已删）
         pinned: asBool(json['pinned']),
         archived: asBool(json['archived']),
         createdAt: asString(json['createdAt']),
         updatedAt: asString(json['updatedAt']),
         remindAt: asString(json['remindAt']),
+        // 只认 daily / days，别的一律当单次（旧数据没这个键 → 单次，行为不变）
+        remindRepeat: _normRepeat(asString(json['remindRepeat'])),
+        remindDays: asInt(json['remindDays'], 0),
         extra: extraKeys(json, known),
       );
 
@@ -593,12 +634,13 @@ class Note {
         'type': type,
         'body': body,
         'items': items.map((i) => i.toJson()).toList(),
-        'tags': tags,
         'pinned': pinned,
         'archived': archived,
         'createdAt': createdAt,
         'updatedAt': updatedAt,
         'remindAt': remindAt,
+        'remindRepeat': remindRepeat,
+        'remindDays': remindDays,
       };
 
   Note copyWith({
@@ -606,10 +648,12 @@ class Note {
     String? type,
     String? body,
     List<NoteItem>? items,
-    List<String>? tags,
     bool? pinned,
     bool? archived,
     String? updatedAt,
+    String? remindAt,
+    String? remindRepeat,
+    int? remindDays,
   }) =>
       Note(
         id: id,
@@ -617,11 +661,15 @@ class Note {
         type: type ?? this.type,
         body: body ?? this.body,
         items: items ?? List<NoteItem>.from(this.items),
-        tags: tags ?? List<String>.from(this.tags),
         pinned: pinned ?? this.pinned,
         archived: archived ?? this.archived,
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
+        // 提醒这三样必须带上：copyWith 是「照着旧的造一个新的」，
+        // 漏掉哪个字段就等于静默把它清空（提醒是最容易被这样弄丢的）。
+        remindAt: remindAt ?? this.remindAt,
+        remindRepeat: remindRepeat ?? this.remindRepeat,
+        remindDays: remindDays ?? this.remindDays,
         extra: Map<String, dynamic>.from(extra),
       );
 }

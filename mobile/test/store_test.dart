@@ -7,6 +7,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:my_day_phone/models.dart';
 import 'package:my_day_phone/store.dart';
 
+
+/// 让文件的 mtime 有机会变一下（Windows 上精度可能只有秒级）。
+void sleepForMtime() {
+  final now = DateTime.now().millisecondsSinceEpoch;
+  while (DateTime.now().millisecondsSinceEpoch - now < 1100) {}
+}
+
 void main() {
   late Directory tmp;
   late Store store;
@@ -142,6 +149,142 @@ void main() {
         store.saveSettings(store.settings()..displayName = '第 $i 次');
       }
       expect(store.settings().displayName, '第 5 次');
+    });
+  });
+
+  // ---------- 变更通知（v1.8.1） ----------
+  //
+  // 起因：凯森 2026-09-21 在首页点开一条备忘录删掉，返回首页它还在。
+  // 修法是让 store 落盘时通知界面。下面守住这个机制本身。
+
+  group('变更通知（v1.8.1）', () {
+    // 注意：先 init。文件不存在时 read() 会补一份默认值（也走 write），
+    // 那一下也会通知 —— 真机上 App 启动时已经 init 过了，不该把它算进来。
+    test('保存任何一份数据都会通知', () {
+      store.init();
+      var hits = 0;
+      void onChanged() => hits++;
+      store.addListener(onChanged);
+      addTearDown(() => store.removeListener(onChanged));
+
+      store.saveNotes(store.notes());
+      expect(hits, 1);
+      store.saveSettings(store.settings());
+      expect(hits, 2, reason: '监听挂在唯一的落盘入口上，任何一份都该触发');
+      store.saveCourses(store.courses());
+      expect(hits, 3);
+    });
+
+    test('移除之后不再通知', () {
+      store.init();
+      var hits = 0;
+      void onChanged() => hits++;
+      store.addListener(onChanged);
+      store.saveNotes(store.notes());
+      expect(hits, 1);
+
+      store.removeListener(onChanged);
+      store.saveNotes(store.notes());
+      expect(hits, 1, reason: '摘掉监听后不该再回调（否则页面 dispose 后会炸）');
+    });
+
+    test('回调里又写数据不会无限递归', () {
+      store.init();
+      var hits = 0;
+      void onChanged() {
+        hits++;
+        // 危险写法：回调里再落一次盘。没有防重入守卫就是栈溢出。
+        if (hits < 10) store.saveSettings(store.settings());
+      }
+
+      store.addListener(onChanged);
+      addTearDown(() => store.removeListener(onChanged));
+      store.saveNotes(store.notes());
+      expect(hits, 1, reason: '重入要被挡掉，不能一路递归下去');
+    });
+
+    test('回调里摘监听不会让遍历崩（遍历用的是快照）', () {
+      store.init();
+      var hits = 0;
+      void first() {
+        hits++;
+        store.removeListener(first); // 在自己被调用的过程中摘掉自己
+      }
+
+      store.addListener(first);
+      addTearDown(() => store.removeListener(first));
+      expect(() => store.saveNotes(store.notes()), returnsNormally);
+      expect(hits, 1);
+    });
+
+    test('写失败时不该误报成功（通知只在落盘成功后发）', () {
+      var hits = 0;
+      void onChanged() => hits++;
+      store.addListener(onChanged);
+      addTearDown(() => store.removeListener(onChanged));
+
+      // 把数据目录换成「一个文件」，写进去必然失败
+      final blocked = File('${tmp.path}/blocked');
+      blocked.writeAsStringSync('x');
+      final broken = Store(Directory(blocked.path));
+
+      expect(() => broken.saveNotes(broken.notes()..notes = <Note>[]),
+          throwsA(anything));
+      expect(hits, 0, reason: '没写成功就别通知界面，否则界面会以为改好了');
+    });
+  });
+
+  // ---------- 清掉旧字段（v1.9.0 去掉标签功能） ----------
+  // 凯森要求「数据一起清掉」：不光界面不显示，文件里也不该再留着。
+
+  group('清理旧标签字段（v1.9.0）', () {
+    test('init 会把存量数据里的 tags 抹掉', () {
+      // 造一份「老版本写出来的」notes.json
+      store.write('notes', <String, dynamic>{
+        'version': schemaVersion,
+        'notes': <dynamic>[
+          <String, dynamic>{
+            'id': 'n1',
+            'title': '老的',
+            'tags': <String>['学习', '生活'],
+            'createdAt': '2026-09-19T07:00:00+08:00',
+            'updatedAt': '2026-09-19T07:00:00+08:00',
+          },
+        ],
+      });
+
+      Store(tmp).init(); // 换一个实例走正常的启动流程
+
+      final raw =
+          jsonDecode(File('${tmp.path}/notes.json').readAsStringSync()) as Map<String, dynamic>;
+      final note = (raw['notes'] as List).first as Map<String, dynamic>;
+      expect(note.containsKey('tags'), isFalse, reason: '旧字段要被清掉');
+      expect(note['title'], '老的', reason: '别的字段不能动');
+    });
+
+    test('没有残留时不动文件（别每次启动都写一遍）', () {
+      store.init();
+      final before = File('${tmp.path}/notes.json').lastModifiedSync();
+      var notified = 0;
+      void onChanged() => notified++;
+      store.addListener(onChanged);
+      addTearDown(() => store.removeListener(onChanged));
+
+      // 再 init 一次：没有 tags 残留，不该写盘、也不该通知界面
+      sleepForMtime();
+      store.init();
+
+      expect(notified, 0, reason: '没变化就别触发界面刷新');
+      expect(File('${tmp.path}/notes.json').lastModifiedSync(), before,
+          reason: '文件没被动过');
+    });
+
+    test('笔记里夹着非对象的脏数据也不崩', () {
+      store.write('notes', <String, dynamic>{
+        'version': schemaVersion,
+        'notes': <dynamic>['不是对象', 42, null],
+      });
+      expect(() => Store(tmp).init(), returnsNormally);
     });
   });
 

@@ -1,5 +1,7 @@
 // 数据模型的测试：默认值必须为空、序列化必须往返无损、
 // 而且认不出的字段不能吃掉（这是和电脑版备份互通的关键）。
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_day_phone/models.dart';
 
@@ -122,16 +124,30 @@ void main() {
           NoteItem(text: '写作业', done: true),
           NoteItem(text: '交作业'),
         ],
-        tags: <String>['学习', '杂事'],
         pinned: true,
       );
       final back = Note.fromJson(n.toJson());
       expect(back.isTodo, isTrue);
       expect(back.itemsTotal, 2);
       expect(back.itemsDone, 1);
-      expect(back.tags, <String>['学习', '杂事']);
       expect(back.pinned, isTrue);
       expect(back.archived, isFalse);
+    });
+
+    test('v1.9.0：读进带 tags 的旧数据，写出去就没有 tags 了', () {
+      // 这条守的其实是个反直觉的点：known 里**必须留着 'tags' 这个名字**。
+      // 因为 extraKeys 会把「不在 known 里」的键收进 extra 再原样写回去 ——
+      // 把 'tags' 从 known 删掉，旧数据反而会被永久保留在文件里，清不掉。
+      final n = Note.fromJson(<String, dynamic>{
+        'id': 'n1',
+        'title': '旧的',
+        'tags': <String>['学习', '生活'],
+        'createdAt': '2026-09-19T07:00:00+08:00',
+      });
+      expect(n.title, '旧的');
+      expect(n.extra.containsKey('tags'), isFalse,
+          reason: 'tags 不能被当成「认不出的字段」留下来');
+      expect(n.toJson().containsKey('tags'), isFalse);
     });
 
     test('认不出的字段会被留下来——不会把另一边的字段吃掉', () {
@@ -209,6 +225,75 @@ void main() {
     test('类型名字', () {
       expect(NoteType.label(NoteType.text), '笔记');
       expect(NoteType.label(NoteType.todo), '清单');
+    });
+  });
+
+  // ---------- 提醒的重复方式（v1.8.2） ----------
+
+  group('提醒重复方式（v1.8.2）', () {
+    test('默认是单次', () {
+      final n = Note(id: 'n');
+      expect(n.remindRepeat, '');
+      expect(n.remindDaily, isFalse);
+    });
+
+    test('每天能存能读', () {
+      final n = Note(id: 'n', remindRepeat: Note.remindRepeatDaily);
+      expect(n.remindDaily, isTrue);
+      final back = Note.fromJson(jsonDecode(jsonEncode(n.toJson())));
+      expect(back.remindRepeat, Note.remindRepeatDaily);
+      expect(back.remindDaily, isTrue);
+    });
+
+    test('老数据没有这个键 → 当单次（不能改变原有行为）', () {
+      final back = Note.fromJson(<String, dynamic>{'id': 'n', 'title': '旧的'});
+      expect(back.remindRepeat, '');
+      expect(back.remindDaily, isFalse);
+    });
+
+    test('认不出来的值一律当单次，不引入没实现的行为', () {
+      final back = Note.fromJson(<String, dynamic>{
+        'id': 'n',
+        'remindRepeat': 'weekly', // 以后可能加，但现在没实现
+      });
+      expect(back.remindRepeat, '');
+      expect(back.remindDaily, isFalse);
+    });
+
+    // ---------- v1.9.1：第三种方式「N 天后」 ----------
+
+    test('「N 天后」能存能读，天数是数字', () {
+      final n = Note(
+          id: 'n', remindRepeat: Note.remindRepeatDays, remindDays: 3);
+      expect(n.remindAfterDays, isTrue);
+      expect(n.remindDaily, isFalse);
+      final back = Note.fromJson(jsonDecode(jsonEncode(n.toJson())));
+      expect(back.remindRepeat, Note.remindRepeatDays);
+      expect(back.remindDays, 3);
+      expect(back.remindAfterDays, isTrue);
+    });
+
+    test('天数默认 0；老数据没有这个键也不炸', () {
+      expect(Note(id: 'n').remindDays, 0);
+      final back = Note.fromJson(<String, dynamic>{'id': 'n'});
+      expect(back.remindDays, 0);
+    });
+
+    test('copyWith 不能把提醒弄丢（v1.9.1 顺手修的雷）', () {
+      // 原来 copyWith 没带 remindAt / remindRepeat，
+      // 谁要是拿它「改个标题」，提醒会被静默清空。
+      final n = Note(
+        id: 'n',
+        title: '旧标题',
+        remindAt: '2026-09-21T08:00:00',
+        remindRepeat: Note.remindRepeatDays,
+        remindDays: 5,
+      );
+      final copy = n.copyWith(title: '新标题');
+      expect(copy.title, '新标题');
+      expect(copy.remindAt, '2026-09-21T08:00:00', reason: '提醒时间不能被 copyWith 吃掉');
+      expect(copy.remindRepeat, Note.remindRepeatDays);
+      expect(copy.remindDays, 5);
     });
   });
 

@@ -52,6 +52,44 @@ class Store {
   List<StoreWarning> get warnings => List<StoreWarning>.unmodifiable(_warnings);
   void clearWarnings() => _warnings.clear();
 
+  // ---------- 变更通知（v1.8.1） ----------
+  //
+  // 起因（凯森 2026-09-21）：在首页点开一条备忘录、删掉、返回，
+  // 首页那张「备忘录速览」里**它还在**，得切走再切回来才消失。
+  //
+  // 根因：页面都是 build 时**实时读** store 的，数据永远是最新的；
+  // 缺的是「数据变了 → 界面重新 build」这一环。首页的 State 一直在（没被销毁），
+  // 所以只要没有人叫它 setState，它就一直显示旧内容。
+  // 切 Tab 之所以看着「好了」，是因为 HomeShell 用 KeyedSubtree 带 label 做 key，
+  // 切走再切回会把 State 整个重建一遍 —— 那是巧合，不是修好了。
+  //
+  // 监听挂在 [write] 上：它是所有落盘的**唯一总入口**，
+  // 挂在那一处就覆盖了备忘录、课表、设置、记账、天气缓存所有保存路径，
+  // 不用在每个 saveXxx 里各写一遍（那种写法早晚会漏一个）。
+  final List<void Function()> _listeners = <void Function()>[];
+
+  /// 数据变化时回调（界面用来 setState）。记得在 dispose 里 [removeListener]。
+  void addListener(void Function() f) => _listeners.add(f);
+
+  void removeListener(void Function() f) => _listeners.remove(f);
+
+  bool _notifying = false;
+
+  /// 通知所有监听者。**带防重入**：万一某个回调里又写了数据，
+  /// 不加这个守卫就是无限递归。
+  void _notifyChanged() {
+    if (_notifying || _listeners.isEmpty) return;
+    _notifying = true;
+    try {
+      // 复制一份再遍历：回调里可能增删监听
+      for (final f in List<void Function()>.of(_listeners)) {
+        f();
+      }
+    } finally {
+      _notifying = false;
+    }
+  }
+
   /// 各文件的默认内容。**必须和电脑版 `DEFAULT_*` 一致**，
   /// 而且不能有任何真实个人信息（零预置原则）。
   static Map<String, dynamic> defaultsFor(String name) {
@@ -114,6 +152,30 @@ class Store {
         write(name, defaultsFor(name));
       }
     }
+    dropLegacyNoteTags();
+  }
+
+  /// 把存量数据里的旧 `tags` 字段抹掉（v1.9.0 去掉标签功能）。
+  ///
+  /// 为什么非要在 init 里单独清一遍：模型已经不再解析 tags 了，
+  /// 但**光靠「不解析」清不掉文件里的旧数据** ——
+  /// 用户的笔记只要不被编辑过就不会重写，那些 tags 会一直躺在 notes.json 里。
+  /// 凯森 2026-09-21 要求「数据一起清掉」，所以启动时扫一遍、有残留就重写。
+  ///
+  /// 「没有残留就不写」很重要：不然每次启动都写一次文件，
+  /// 白白触发界面刷新，还磨损存储。
+  void dropLegacyNoteTags() {
+    final obj = read('notes');
+    final list = obj['notes'];
+    if (list is! List) return;
+    var changed = false;
+    for (final raw in list) {
+      if (raw is Map && raw.containsKey('tags')) {
+        raw.remove('tags');
+        changed = true;
+      }
+    }
+    if (changed) write('notes', obj);
   }
 
   /// 原子写：先写 `xxx.json.tmp`，成功后再改名覆盖。
@@ -125,6 +187,8 @@ class Store {
     try {
       tmp.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(data), flush: true);
       tmp.renameSync(target.path);
+      // 落盘成功才通知界面（写失败了别让界面误以为改好了）
+      _notifyChanged();
     } catch (_) {
       if (tmp.existsSync()) {
         try {

@@ -15,7 +15,6 @@ Note note(String id,
     String type = NoteType.text,
     String body = '',
     List<NoteItem>? items,
-    List<String>? tags,
     bool pinned = false,
     bool archived = false,
     String updatedAt = '2026-09-19T08:00:00+08:00'}) {
@@ -25,7 +24,6 @@ Note note(String id,
     type: type,
     body: body,
     items: items,
-    tags: tags,
     pinned: pinned,
     archived: archived,
     createdAt: '2026-09-19T07:00:00+08:00',
@@ -238,12 +236,20 @@ void main() {
       expect(out[2].body, '');
     });
 
-    test('标签原样带出去，置顶标出来', () {
+    test('v1.9.0：从带旧标签的 JSON 造出来的笔记，速览也照常渲染', () {
+      // 存量数据里可能还带着 tags，速览不能因此炸掉
       final out = previewNotes(<Note>[
-        note('a', title: '甲', pinned: true, tags: <String>['学习', '生活']),
+        Note.fromJson(<String, dynamic>{
+          'id': 'a',
+          'title': '甲',
+          'pinned': true,
+          'tags': <String>['学习', '生活'],
+          'createdAt': '2026-09-19T07:00:00+08:00',
+          'updatedAt': '2026-09-19T08:00:00+08:00',
+        }),
       ]);
-      expect(out.single.tags, <String>['学习', '生活']);
       expect(out.single.pinned, isTrue);
+      expect(out.single.title, '甲');
     });
   });
 

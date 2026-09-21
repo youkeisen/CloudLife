@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_day_phone/app.dart';
 import 'package:my_day_phone/models.dart';
+import 'package:my_day_phone/notification_service.dart';
 import 'package:my_day_phone/store.dart';
 
 void main() {
@@ -28,7 +29,6 @@ void main() {
     String type = 'text',
     String body = '',
     List<NoteItem>? items,
-    List<String> tags = const <String>[],
     bool pinned = false,
     bool archived = false,
   }) {
@@ -39,7 +39,6 @@ void main() {
       type: type,
       body: body,
       items: items,
-      tags: tags,
       pinned: pinned,
       archived: archived,
       createdAt: now,
@@ -104,9 +103,8 @@ void main() {
     expect(find.text('购物'), findsOneWidget);
   });
 
-  testWidgets('列表显示置顶星标和副标题（类型 · 标签 · 摘要）', (tester) async {
-    seedNote('a', title: '置顶的', pinned: true, tags: <String>['生活'],
-        body: '第一行\n第二行');
+  testWidgets('列表显示置顶星标和副标题（类型 · 摘要）', (tester) async {
+    seedNote('a', title: '置顶的', pinned: true, body: '第一行\n第二行');
     seedNote('b', title: '清单的', type: 'todo', items: <NoteItem>[
       NoteItem(text: '甲', done: true),
       NoteItem(text: '乙'),
@@ -114,17 +112,23 @@ void main() {
     await pumpApp(tester);
 
     expect(find.text('★ 置顶的'), findsOneWidget);
-    expect(find.text('笔记 · 生活 · 第一行'), findsOneWidget);
+    // v1.9.1：副标题不再拼标签，就算数据里还带着
+    expect(find.text('笔记 · 第一行'), findsOneWidget);
     expect(find.text('清单的'), findsOneWidget);
     expect(find.text('清单 · 1/2 项完成'), findsOneWidget);
   });
 
-  testWidgets('分组切换：置顶 / 标签 / 归档', (tester) async {
-    seedNote('a', title: '置顶的', pinned: true, tags: <String>['生活']);
+  testWidgets('分组切换：全部 / 置顶 / 归档（v1.9.1 起没有标签分组）', (tester) async {
+    seedNote('a', title: '置顶的', pinned: true);
     seedNote('b', title: '普通的');
     seedNote('c', title: '归档的', archived: true);
-    seedNote('d', title: '带标签的', tags: <String>['生活']);
+    seedNote('d', title: '第四条的');
     await pumpApp(tester);
+
+    // 去掉标签功能后不该再有标签分组
+    expect(find.textContaining('生活'), findsNothing,
+        reason: '标签分组已经删掉了');
+    expect(find.text('全部 3'), findsOneWidget);
 
     // 默认「全部 3」：归档的不在
     expect(find.text('普通的'), findsOneWidget);
@@ -133,12 +137,6 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('note-group-pinned')));
     await tester.pumpAndSettle();
     expect(find.text('★ 置顶的'), findsOneWidget);
-    expect(find.text('普通的'), findsNothing);
-
-    await tester.tap(find.byKey(const ValueKey('note-group-tag:生活')));
-    await tester.pumpAndSettle();
-    expect(find.text('★ 置顶的'), findsOneWidget);
-    expect(find.text('带标签的'), findsOneWidget);
     expect(find.text('普通的'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('note-group-archived')));
@@ -196,14 +194,21 @@ void main() {
     expect(find.text('刚敲的字'), findsOneWidget);
   });
 
-  testWidgets('标签输入框改标签，按逗号顿号切分后落盘', (tester) async {
-    seedNote('a', title: '带标签', tags: <String>['旧标签']);
+  testWidgets('v1.9.0：编辑页没有标签输入框，存过之后数据里也没有 tags', (tester) async {
+    seedNote('a', title: '随便记');
     await pumpApp(tester);
-    await openFirst(tester, '带标签');
+    await openFirst(tester, '随便记');
 
-    await tester.enterText(find.byKey(const ValueKey('field-tags')), '甲，乙、丙');
+    expect(find.byKey(const ValueKey('field-tags')), findsNothing,
+        reason: '凯森要求把笔记里的标签删掉');
+    expect(find.text('标签（用逗号或顿号分开）'), findsNothing,
+        reason: '那个输入框的标签文字也不该在');
+
+    await tester.enterText(find.byKey(const ValueKey('field-title')), '改过标题');
     await tester.pump(const Duration(milliseconds: 600));
-    expect(notesJson()['notes'].first['tags'], <String>['甲', '乙', '丙']);
+    final saved = (notesJson()['notes'] as List).first as Map<String, dynamic>;
+    expect(saved['title'], '改过标题');
+    expect(saved.containsKey('tags'), isFalse, reason: '写出去的 JSON 里不该再有 tags');
   });
 
   testWidgets('正文笔记：编辑内容自动保存', (tester) async {
@@ -320,5 +325,192 @@ void main() {
     await tester.pumpAndSettle();
     expect(notesJson()['notes'].first['title'], '手动存');
     expect(find.text('已保存'), findsOneWidget);
+  });
+  // ---------- v1.9.1：定时提醒（先选时间，再选方式） ----------
+  // 凯森 2026-09-21 的要求：
+  //   1) 点提醒**直接选时分**，不选日期
+  //   2) 滚轮默认停在**当前时间**（以前是 +1 小时）
+  //   3) 设好时间后，**在编辑页上**选 单次 / 每天 / N 天后
+
+  group('定时提醒（v1.9.1）', () {
+    String two(int n) => n < 10 ? '0$n' : '$n';
+
+    testWidgets('点提醒直接进时间滚轮，不选日期；默认停在当前时间', (tester) async {
+      seedNote('a', title: '续火花', body: '记得回消息');
+      await pumpApp(tester);
+      await openFirst(tester, '续火花');
+
+      await tester.tap(find.byKey(const ValueKey('field-remind')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('wheel-hour')), findsOneWidget);
+      expect(find.text('选择时间'), findsOneWidget);
+      expect(find.text('选提醒日期'), findsNothing, reason: '不该再有日期选择器');
+
+      // 默认停在当前时间（凯森要求不要往后调一小时）
+      final t = TimeOfDay.fromDateTime(DateTime.now());
+      expect(find.text(two(t.hour)), findsWidgets,
+          reason: '滚轮默认该停在当前的小时');
+    });
+
+    testWidgets('选完时间后，编辑页上出现「单次 / 每天 / N 天后」', (tester) async {
+      seedNote('a', title: '续火花');
+      await pumpApp(tester);
+      await openFirst(tester, '续火花');
+
+      expect(find.byKey(const ValueKey('remind-mode-once')), findsNothing,
+          reason: '还没设提醒时不该有方式选择');
+
+      await tester.tap(find.byKey(const ValueKey('field-remind')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('wheel-ok')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('remind-mode-once')), findsOneWidget);
+      expect(find.byKey(const ValueKey('remind-mode-daily')), findsOneWidget);
+      expect(find.byKey(const ValueKey('remind-mode-days')), findsOneWidget);
+      expect(find.text('提醒方式'), findsOneWidget);
+      expect(find.byKey(const ValueKey('field-remind-days')), findsNothing,
+          reason: '天数输入框只在选了 N 天后才出现');
+
+      final saved = (notesJson()['notes'] as List).first as Map<String, dynamic>;
+      expect(saved['remindAt'], isNotEmpty);
+      expect(saved['remindRepeat'], '', reason: '刚设好默认是单次');
+    });
+
+    testWidgets('点「每天」：落盘 daily，排给系统的是每天重复', (tester) async {
+      seedNote('a', title: '续火花');
+      await pumpApp(tester);
+      await openFirst(tester, '续火花');
+      await tester.tap(find.byKey(const ValueKey('field-remind')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('wheel-ok')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('remind-mode-daily')));
+      await tester.pumpAndSettle();
+
+      final saved = (notesJson()['notes'] as List).first as Map<String, dynamic>;
+      expect(saved['remindRepeat'], 'daily');
+
+      final t = TimeOfDay.fromDateTime(DateTime.now());
+      expect(find.text('每天 ${two(t.hour)}:${two(t.minute)}'), findsOneWidget);
+
+      final last = NotificationService.debugLastSchedule;
+      expect(last, isNotNull);
+      expect(last!.daily, isTrue, reason: '没带每天重复参数的话只会响一次');
+      expect(last.when.isAfter(DateTime.now()), isTrue,
+          reason: '插件只排未来的时刻');
+    });
+
+    testWidgets('点「N 天后」：出现天数输入框，默认 1 天', (tester) async {
+      seedNote('a', title: '续火花');
+      await pumpApp(tester);
+      await openFirst(tester, '续火花');
+      await tester.tap(find.byKey(const ValueKey('field-remind')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('wheel-ok')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('remind-mode-days')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('field-remind-days')), findsOneWidget);
+      final saved = (notesJson()['notes'] as List).first as Map<String, dynamic>;
+      expect(saved['remindRepeat'], 'days');
+      expect(saved['remindDays'], 1, reason: '默认 1 天，不该是 0');
+      expect(find.textContaining('明天'), findsOneWidget);
+
+      final last = NotificationService.debugLastSchedule!;
+      final now = DateTime.now();
+      expect(last.daily, isFalse);
+      expect(
+        last.when,
+        DateTime(now.year, now.month, now.day + 1, last.when.hour, last.when.minute),
+        reason: '1 天后 = 明天那个时:分',
+      );
+    });
+
+    testWidgets('改天数：3 天后 → 落盘并显示「3 天后」', (tester) async {
+      seedNote('a', title: '续火花');
+      await pumpApp(tester);
+      await openFirst(tester, '续火花');
+      await tester.tap(find.byKey(const ValueKey('field-remind')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('wheel-ok')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('remind-mode-days')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+          find.byKey(const ValueKey('field-remind-days')), '3');
+      await tester.pumpAndSettle();
+
+      final saved = (notesJson()['notes'] as List).first as Map<String, dynamic>;
+      expect(saved['remindDays'], 3);
+      expect(find.textContaining('3 天后'), findsOneWidget);
+    });
+
+    testWidgets('在方式之间来回切：天数会清掉，不残留', (tester) async {
+      seedNote('a', title: '续火花');
+      await pumpApp(tester);
+      await openFirst(tester, '续火花');
+      await tester.tap(find.byKey(const ValueKey('field-remind')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('wheel-ok')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('remind-mode-days')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(const ValueKey('field-remind-days')), '7');
+      await tester.pumpAndSettle();
+      expect((notesJson()['notes'] as List).first['remindDays'], 7);
+
+      // 切到每天：天数归零（不然下次切回来会冒出个 7）
+      await tester.tap(find.byKey(const ValueKey('remind-mode-daily')));
+      await tester.pumpAndSettle();
+      var saved = (notesJson()['notes'] as List).first as Map<String, dynamic>;
+      expect(saved['remindRepeat'], 'daily');
+      expect(saved['remindDays'], 0);
+
+      // 再切回 N 天后：**界面上记着刚填的 7**（不该把用户刚敲的数字弄丢）
+      await tester.tap(find.byKey(const ValueKey('remind-mode-days')));
+      await tester.pumpAndSettle();
+      saved = (notesJson()['notes'] as List).first as Map<String, dynamic>;
+      expect(saved['remindRepeat'], 'days');
+      expect(saved['remindDays'], 7,
+          reason: '数据层切走时清了 0，但输入框留着 7，切回来该恢复成 7');
+    });
+
+    testWidgets('取消提醒：时间、方式、天数一起清掉', (tester) async {
+      final notes = store.notes();
+      notes.notes.add(Note(
+        id: 'a',
+        title: '续火花',
+        remindAt: '2026-09-21T08:00:00',
+        remindRepeat: Note.remindRepeatDays,
+        remindDays: 3,
+        createdAt: '2026-09-19T08:00:00+08:00',
+        updatedAt: '2026-09-19T08:00:00+08:00',
+      ));
+      store.saveNotes(notes);
+
+      await pumpApp(tester);
+      await openFirst(tester, '续火花');
+      expect(find.text('3 天后 08:00'), findsOneWidget, reason: '先进来确认是 N 天后');
+
+      expect(find.byKey(const ValueKey('btn-clear-remind')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('btn-clear-remind')));
+      await tester.pumpAndSettle();
+
+      final saved = (notesJson()['notes'] as List).first as Map<String, dynamic>;
+      expect(saved['remindAt'], '');
+      expect(saved['remindRepeat'], '');
+      expect(saved['remindDays'], 0);
+      expect(find.text('不提醒'), findsOneWidget);
+      expect(find.byKey(const ValueKey('remind-mode-once')), findsNothing,
+          reason: '没提醒了就不该再显示方式选择');
+    });
   });
 }

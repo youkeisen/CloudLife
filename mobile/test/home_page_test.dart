@@ -244,12 +244,62 @@ void main() {
     expect(find.text('19°'), findsOneWidget);
   });
 
+  // ---------- v1.8.1：数据变了首页要跟着变 ----------
+  //
+  // 凯森 2026-09-21 报的：在首页点开一条备忘录，在编辑页删掉，返回首页 ——
+  // 那条**还在**「备忘录速览」里，得切走再切回来才消失。
+  //
+  // 根因是首页的 State 一直在（没被销毁），而 store 变了没有任何东西通知它重建。
+  // 下面这条守着「删掉之后立刻不显示」，不靠切 Tab。
+
+  testWidgets('v1.8.1：别处删掉备忘录，首页立刻不显示（不需要切 Tab）', (tester) async {
+    final notes = store.notes()
+      ..notes = <Note>[
+        Note(
+          id: 'n1', title: '但是', body: '随便写点什么',
+          createdAt: '2026-09-19T07:00:00+08:00',
+          updatedAt: '2026-09-19T07:00:00+08:00',
+        ),
+        Note(
+          id: 'n2', title: '留着的那条',
+          createdAt: '2026-09-19T06:00:00+08:00',
+          updatedAt: '2026-09-19T06:00:00+08:00',
+        ),
+      ];
+    store.saveNotes(notes);
+
+    await pumpHome(tester);
+    expect(find.text('但是'), findsOneWidget);
+
+    // 模拟「在编辑页里删掉了这条」——编辑页最终也是走 saveNotes
+    final after = store.notes()
+      ..notes = store.notes().notes.where((n) => n.id != 'n1').toList();
+    store.saveNotes(after);
+    await tester.pump();
+
+    expect(find.text('但是'), findsNothing,
+        reason: 'store 变了首页就该重建，不该等切 Tab');
+    expect(find.text('留着的那条'), findsOneWidget, reason: '别误伤别的条目');
+  });
+
+  testWidgets('v1.8.1：首页销毁后不再响应 store 变化（监听没泄漏）', (tester) async {
+    await pumpHome(tester);
+    // 把首页从树上换掉，dispose 应该已经摘掉监听
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
+    await tester.pump();
+
+    // 这个时候再写数据，不该出现「setState after dispose」之类的异常
+    store.saveNotes(store.notes());
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('备忘录速览：最多 3 条、置顶在前、清单项内容和勾选态都看得到', (tester) async {
     final notes = store.notes()
       ..notes = <Note>[
         Note(
           id: 'n1', title: '普通笔记', body: '第一行正文\n第二行',
-          tags: <String>['学习'], createdAt: '2026-09-19T07:00:00+08:00',
+          createdAt: '2026-09-19T07:00:00+08:00',
           updatedAt: '2026-09-19T07:00:00+08:00',
         ),
         Note(
@@ -283,13 +333,53 @@ void main() {
     expect(find.text('第四条不该出现'), findsNothing, reason: '速览最多 3 条');
     expect(find.byKey(const ValueKey('home-note-n1')), findsOneWidget,
         reason: '速览按 updatedAt 排，最新的三条里包含 n1');
+    // 摘要（标题右边那行）照旧一眼能看到
+    expect(find.text('1/2 项完成'), findsOneWidget);
+    // 但内容默认收起（v1.9.1，凯森要求）—— 里面的项一开始看不见
+    expect(find.text('买菜'), findsNothing, reason: '默认收起，内容不该露出来');
+    expect(find.text('拿快递'), findsNothing);
+
+    // 点小三角展开那一条，内容才出来
+    await tester.tap(find.byKey(const ValueKey('home-caret-n2')));
+    await tester.pumpAndSettle();
     expect(find.text('买菜'), findsOneWidget);
     expect(find.text('拿快递'), findsOneWidget);
-    expect(find.text('1/2 项完成'), findsOneWidget);
+
+    // 长清单（8 项）展开后才会显示「还有几项」
+    await tester.tap(find.byKey(const ValueKey('home-caret-n3')));
+    await tester.pumpAndSettle();
     expect(find.text('… 还有 2 项'), findsOneWidget);
   });
 
-  testWidgets('点清单项直接勾，落盘且尾巴的项不被冲掉', (tester) async {
+  testWidgets('v1.9.1：内容默认收起，点小三角展开、再点收起', (tester) async {
+    final notes = store.notes()
+      ..notes = <Note>[
+        Note(
+          id: 'n1', title: '有正文的笔记', body: '第一行正文\n第二行',
+          createdAt: '2026-09-19T07:00:00+08:00',
+          updatedAt: '2026-09-19T07:00:00+08:00',
+        ),
+      ];
+    store.saveNotes(notes);
+
+    await pumpHome(tester);
+    // 收起：只有标题
+    expect(find.text('有正文的笔记'), findsOneWidget);
+    expect(find.text('第一行正文\n第二行'), findsNothing);
+
+    // 展开
+    await tester.tap(find.byKey(const ValueKey('home-caret-n1')));
+    await tester.pumpAndSettle();
+    expect(find.text('第一行正文\n第二行'), findsOneWidget);
+
+    // 再点收起
+    await tester.tap(find.byKey(const ValueKey('home-caret-n1')));
+    await tester.pumpAndSettle();
+    expect(find.text('第一行正文\n第二行'), findsNothing);
+  });
+
+  testWidgets('点清单项直接勾，落盘且尾巴的项不被冲掉（v1.9.1 要先展开）',
+      (tester) async {
     final notes = store.notes()
       ..notes = <Note>[
         Note(
@@ -306,6 +396,9 @@ void main() {
     store.saveNotes(notes);
 
     await pumpHome(tester);
+    // v1.9.1：内容默认收起，先展开才能点里面的项
+    await tester.tap(find.byKey(const ValueKey('home-caret-n1')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('home-item-n1-0')));
     await tester.pump();
 
@@ -321,7 +414,7 @@ void main() {
     expect(find.text('1/9 项完成'), findsOneWidget);
   });
 
-  testWidgets('小三角收放：收起后详情看不见，再点展开', (tester) async {
+  testWidgets('小三角收放：默认收起，点开展开、再点收回去', (tester) async {
     final notes = store.notes()
       ..notes = <Note>[
         Note(
@@ -334,13 +427,13 @@ void main() {
     store.saveNotes(notes);
 
     await pumpHome(tester);
-    expect(find.text('任务1'), findsOneWidget, reason: '默认展开');
-    await tester.tap(find.byKey(const ValueKey('home-caret-n1')));
-    await tester.pump();
-    expect(find.text('任务1'), findsNothing);
+    expect(find.text('任务1'), findsNothing, reason: 'v1.9.1 起默认收起');
     await tester.tap(find.byKey(const ValueKey('home-caret-n1')));
     await tester.pump();
     expect(find.text('任务1'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('home-caret-n1')));
+    await tester.pump();
+    expect(find.text('任务1'), findsNothing, reason: '再点一下收回去');
   });
 
   testWidgets('点速览的笔记行 → onOpenNote 带上那条的 id', (tester) async {

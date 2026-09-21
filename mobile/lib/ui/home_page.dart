@@ -44,13 +44,29 @@ class _HomePageState extends State<HomePage> {
   String? _fetchedAt;
   int _gen = 0;
 
-  /// 每条速览的收放状态，默认展开（和电脑版 homeNoteOpen 一致）。
+  /// 每条速览的收放状态。**默认收起**（v1.9.1 改，凯森要求）；
+  /// 表里只记「用户手动展开过的那几条」。
   final Map<String, bool> _noteOpen = <String, bool>{};
 
   @override
   void initState() {
     super.initState();
+    // v1.8.1：跟着数据走。首页的内容（今日课程 / 备忘录速览）是 build 时实时读的，
+    // 但要有人叫它重建才会重读 —— 从首页点开一条备忘录、在编辑页删掉、返回，
+    // 首页的 State 一直活着，没人通知就一直是旧内容（凯森 2026-09-21 报的问题）。
+    widget.store.addListener(_onStoreChanged);
     _loadWeather();
+  }
+
+  @override
+  void dispose() {
+    widget.store.removeListener(_onStoreChanged);
+    super.dispose();
+  }
+
+  /// store 里任何数据落盘后都会走到这里。
+  void _onStoreChanged() {
+    if (mounted) setState(() {});
   }
 
   /// 取天气：缓存没过期就直接用；否则联网，失败降级旧缓存（对齐 weather_result(force=False)）。
@@ -362,8 +378,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _noteRow(HomeNotePreview n, ColorScheme cs) {
-    final open = _noteOpen[n.id] != false;
-    final tags = n.tags.where((t) => t.isNotEmpty).toList();
+    // 默认**收起**（凯森 2026-09-21 要求「首页笔记的内容改成默认关闭」）：
+    // 首页是「一眼扫过去」的地方，内容全摊开会把卡片撑得很长，
+    // 想看某一条再点小三角展开。
+    final open = _noteOpen[n.id] == true;
     return Container(
       key: ValueKey<String>('home-note-${n.id}'),
       margin: const EdgeInsets.only(bottom: 8),
@@ -426,7 +444,8 @@ class _HomePageState extends State<HomePage> {
         Row(children: <Widget>[
           Flexible(
             child: Text(
-              tags.isEmpty ? NoteType.label(n.type) : tags.join('、'),
+              // v1.9.1：标签功能去掉了，这里只显示类型（笔记 / 清单）
+              NoteType.label(n.type),
               style: TextStyle(fontSize: 11, color: cs.primary),
             ),
           ),
@@ -533,7 +552,10 @@ class _HomePageState extends State<HomePage> {
               style: TextStyle(fontSize: 12, color: cs.outline)),
         ),
         Padding(
-          key: const ValueKey('home-tags'),
+          // 注意：这个是顶部的**教学周圆牌**（第 N 教学周），
+          // 跟备忘录标签没关系。以前 key 叫 home-tags，容易误会，
+          // 去掉标签功能时顺手改成准确的名字。
+          key: const ValueKey('home-week-badge'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
           child: Row(children: <Widget>[
             Container(

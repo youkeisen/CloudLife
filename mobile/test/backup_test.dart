@@ -41,7 +41,7 @@ void main() {
     store.saveCourses(Courses(weeks: {1: [lesson], 3: []}));
 
     store.saveNotes(Notes(notes: [
-      Note(id: 'n1', title: '测试备忘录', body: '正文第一行', tags: ['标签A']),
+      Note(id: 'n1', title: '测试备忘录', body: '正文第一行'),
     ]));
 
     store.setWeatherCache(City(name: '示例市', latitude: 31.1, longitude: 118.1),

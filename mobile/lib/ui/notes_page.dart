@@ -8,6 +8,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show FilteringTextInputFormatter, TextInputFormatter;
 
 import '../models.dart';
 import '../notification_service.dart';
@@ -44,7 +45,6 @@ class _NotesPageState extends State<NotesPage> {
       id: widget.store.newId('n'),
       title: '',
       type: NoteType.text,
-      tags: <String>[],
       createdAt: now,
       updatedAt: now,
     );
@@ -180,7 +180,8 @@ class _NotesPageState extends State<NotesPage> {
   }
 }
 
-/// 备忘录编辑页：标题 / 标签 / 类型 / 正文或清单。
+/// 备忘录编辑页：标题 / 类型 / 定时提醒 / 正文或清单。
+/// （v1.9.1 起没有标签输入框了。）
 class NoteEditPage extends StatefulWidget {
   const NoteEditPage({super.key, required this.store, required this.noteId});
 
@@ -195,9 +196,11 @@ class _NoteEditPageState extends State<NoteEditPage> {
   late final Notes _notes;
   Note? _note;
   late final TextEditingController _titleCtl;
-  late final TextEditingController _tagsCtl;
   late final TextEditingController _bodyCtl;
   final List<TextEditingController> _itemCtls = <TextEditingController>[];
+
+  /// 「N 天后」那个天数输入框（v1.9.1）。
+  late final TextEditingController _daysCtl;
   Timer? _timer;
   bool _dirty = false;
 
@@ -208,8 +211,10 @@ class _NoteEditPageState extends State<NoteEditPage> {
     _note = _notes.byId(widget.noteId);
     final n = _note;
     _titleCtl = TextEditingController(text: n?.title ?? '');
-    _tagsCtl = TextEditingController(text: (n?.tags ?? const <String>[]).join('、'));
     _bodyCtl = TextEditingController(text: n?.body ?? '');
+    // 天数给个默认「1」——空着的话用户会以为坏了；真的要今天就填 0
+    _daysCtl = TextEditingController(
+        text: '${(n?.remindDays ?? 0) > 0 ? n!.remindDays : 1}');
     for (final item in n?.items ?? const <NoteItem>[]) {
       _itemCtls.add(TextEditingController(text: item.text));
     }
@@ -221,8 +226,8 @@ class _NoteEditPageState extends State<NoteEditPage> {
     _timer?.cancel();
     if (_dirty) _save();
     _titleCtl.dispose();
-    _tagsCtl.dispose();
     _bodyCtl.dispose();
+    _daysCtl.dispose();
     for (final c in _itemCtls) {
       c.dispose();
     }
@@ -278,54 +283,146 @@ class _NoteEditPageState extends State<NoteEditPage> {
 
   // ---------- 定时提醒 ----------
 
-  String _remindText() {
-    final raw = _note?.remindAt ?? '';
-    if (raw.isEmpty) return '';
-    final dt = DateTime.tryParse(raw);
-    if (dt == null) return '';
-    return '${dt.month}月${dt.day}日 '
-        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  String _remindText() => _note == null ? '' : remindLabel(_note!);
+
+  /// 排提醒 / 撤提醒，失败了也不往外抛。
+  ///
+  /// 为什么吞掉：设提醒这件事里，「把时间存下来」是主，**「排进系统」是次**——
+  /// 排不上（插件不可用、权限被拒）也不该让用户白设一次。
+  /// 数据存下来之后，下次 App 启动 [ReminderScheduler] 会全量重排一遍兜底。
+  Future<void> _scheduleQuietly(
+    Note n,
+    DateTime when, {
+    bool daily = false,
+  }) async {
+    try {
+      await NotificationService.scheduleFor(n.id, n.title, when,
+          repeatDaily: daily);
+    } catch (_) {/* 交给下次重排 */}
   }
 
-  /// 选提醒时间：先挑日期，再用 Windows 同款滚轮挑时分。
-  Future<void> _pickRemindAt() async {
+  Future<void> _cancelQuietly(Note n) async {
+    try {
+      await NotificationService.cancel(n.id);
+    } catch (_) {/* 同上 */}
+  }
+
+  /// 把当前这条按它的方式排进系统（三种方式共用）。
+  /// 存下来的 [Note.remindAt] 只是「基准时:分」，真正排的是现算出来的时刻。
+  Future<void> _scheduleByMode(Note n, DateTime base, DateTime now) async {
+    if (n.remindDaily) {
+      await _scheduleQuietly(n, nextDailyOccurrence(base, now), daily: true);
+      return;
+    }
+    if (n.remindAfterDays) {
+      await _scheduleQuietly(
+          n, afterDaysOccurrence(base, n.remindDays, now));
+      return;
+    }
+    await _scheduleQuietly(n, nextOnceOccurrence(base, now));
+  }
+
+  /// 点「定时提醒」：**直接弹时间滚轮**（v1.9.1 改）。
+  ///
+  /// 凯森 2026-09-21 的要求：只选小时和分钟、不选日期，默认停在**当前时间**
+  /// （以前是 +1 小时，他要改成当前）。「哪天响」由方式决定（见 [_setRemindMode]）。
+  Future<void> _pickRemindTime() async {
     final n = _note;
     if (n == null) return;
     final now = DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: now,
-      firstDate: DateTime(now.year, now.month, now.day),
-      lastDate: now.add(const Duration(days: 365 * 3)),
-      helpText: '选提醒日期',
-    );
-    if (date == null) return;
-    if (!mounted) return;
-    final time = await showWheelTimePicker(
-        context, TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))));
+    final time = await showWheelTimePicker(context, TimeOfDay.fromDateTime(now));
     if (time == null) return;
-    final when =
-        DateTime(date.year, date.month, date.day, time.hour, time.minute);
-    if (!when.isAfter(now)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(
-              content: Text('要选未来的时间'), duration: Duration(seconds: 2)));
-      }
-      return;
-    }
-    n.remindAt = when.toIso8601String();
-    await NotificationService.scheduleFor(n.id, n.title, when);
+    final base = DateTime(now.year, now.month, now.day, time.hour, time.minute);
+    n.remindAt = base.toIso8601String();
     _saveNow();
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(
-            content: Text(
-                '已设提醒：${when.month}月${when.day}日 ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}'),
-            duration: const Duration(seconds: 2)));
+    await _scheduleByMode(n, base, now);
+    if (!mounted) return;
+    final hm = '${time.hour.toString().padLeft(2, '0')}:'
+        '${time.minute.toString().padLeft(2, '0')}';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+          content: Text('已设提醒：$hm'), duration: const Duration(seconds: 2)));
+  }
+
+  /// 设/改提醒方式：单次 / 每天 / N 天后。
+  ///
+  /// 凯森 2026-09-21 的要求：方式的选择放在**编辑页上**（不在弹窗里），
+  /// 选好时间之后就能点。
+  Future<void> _setRemindMode(String mode) async {
+    final n = _note;
+    if (n == null || n.remindAt.isEmpty) return;
+    final now = DateTime.now();
+    final base = DateTime.tryParse(n.remindAt);
+    if (base == null) return;
+
+    n.remindRepeat = mode;
+    if (mode != Note.remindRepeatDays) {
+      // 不是「N 天后」就把天数归零，免得留着上次的数字下次又冒出来
+      n.remindDays = 0;
+    } else if (n.remindDays <= 0) {
+      // 第一次切到「N 天后」：用输入框里的值（默认 1），别弄出个 0 天
+      n.remindDays = int.tryParse(_daysCtl.text) ?? 1;
+      if (n.remindDays <= 0) n.remindDays = 1;
+      _daysCtl.text = '${n.remindDays}';
     }
+    _saveNow();
+    await _scheduleByMode(n, base, now);
+  }
+
+  /// 改「N 天后」的那个 N。
+  Future<void> _setRemindDays(int days) async {
+    final n = _note;
+    if (n == null || n.remindAt.isEmpty) return;
+    final base = DateTime.tryParse(n.remindAt);
+    if (base == null) return;
+    n.remindDays = days < 0 ? 0 : days;
+    _saveNow();
+    await _scheduleByMode(n, base, DateTime.now());
+  }
+
+  /// 提醒方式三选一（单次 / 每天 / N 天后）+ 「N 天后」的天数（v1.9.1）。
+  ///
+  /// 凯森 2026-09-21 的要求：方式的选择放在编辑页上，选好时间之后就能点。
+  Widget _remindModeRow(Note n) {
+    final cs = Theme.of(context).colorScheme;
+    Widget chip(String label, String mode, String key) => ChoiceChip(
+          key: ValueKey<String>(key),
+          label: Text(label),
+          selected: n.remindRepeat == mode,
+          onSelected: (_) => _setRemindMode(mode),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text('提醒方式', style: TextStyle(fontSize: 12, color: cs.outline)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, runSpacing: 6, children: <Widget>[
+          chip('单次', '', 'remind-mode-once'),
+          chip('每天', Note.remindRepeatDaily, 'remind-mode-daily'),
+          chip('N 天后', Note.remindRepeatDays, 'remind-mode-days'),
+        ]),
+        if (n.remindAfterDays) ...<Widget>[
+          const SizedBox(height: 8),
+          Row(children: <Widget>[
+            Text('几天后：', style: TextStyle(fontSize: 12, color: cs.outline)),
+            SizedBox(
+              width: 76,
+              child: TextField(
+                key: const ValueKey('field-remind-days'),
+                controller: _daysCtl,
+                keyboardType: TextInputType.number,
+                inputFormatters: <TextInputFormatter>[
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
+                decoration: const InputDecoration(isDense: true, suffixText: '天'),
+                onChanged: (v) => _setRemindDays(int.tryParse(v) ?? 0),
+              ),
+            ),
+          ]),
+        ],
+      ],
+    );
   }
 
   /// 清掉提醒。
@@ -333,8 +430,10 @@ class _NoteEditPageState extends State<NoteEditPage> {
     final n = _note;
     if (n == null) return;
     n.remindAt = '';
-    await NotificationService.cancel(n.id);
+    n.remindRepeat = '';
+    n.remindDays = 0;
     _saveNow();
+    await _cancelQuietly(n);
   }
 
   void _deleteNote() {
@@ -430,19 +529,8 @@ class _NoteEditPageState extends State<NoteEditPage> {
             },
           ),
           const SizedBox(height: 12),
-          TextField(
-            key: const ValueKey('field-tags'),
-            controller: _tagsCtl,
-            decoration: const InputDecoration(
-              labelText: '标签（用逗号或顿号分开）',
-              hintText: '例如：生活、学习',
-            ),
-            onChanged: (v) {
-              n.tags = parseTags(v);
-              _markDirty();
-            },
-          ),
-          const SizedBox(height: 12),
+          // v1.9.0：标签输入框去掉了（凯森 2026-09-21「把笔记里的标签删除」）。
+          // 数据里的 tags 字段也一起删了，存量数据由 Store.init() 清（他说「数据一起清掉」）。
           DropdownButtonFormField<String>(
             key: const ValueKey('field-type'),
             initialValue: n.type,
@@ -457,10 +545,11 @@ class _NoteEditPageState extends State<NoteEditPage> {
             },
           ),
           const SizedBox(height: 12),
-          // 定时提醒（凯森 v1.5.0 要求）：点一下选日期 + 时间，设了以后系统会推通知
+          // 定时提醒（凯森 v1.5.0 要求）：点一下**直接选时分**（v1.9.1 改，
+          // 以前还要先挑日期）。设好之后下面出现「单次 / 每天 / N 天后」的选择。
           InkWell(
             key: const ValueKey('field-remind'),
-            onTap: _pickRemindAt,
+            onTap: _pickRemindTime,
             child: InputDecorator(
               isEmpty: n.remindAt.isEmpty,
               decoration: InputDecoration(
@@ -478,6 +567,10 @@ class _NoteEditPageState extends State<NoteEditPage> {
               child: Text(_remindText()),
             ),
           ),
+          if (n.remindAt.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            _remindModeRow(n),
+          ],
           const SizedBox(height: 16),
           if (!isTodo)
             TextField(

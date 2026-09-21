@@ -203,13 +203,22 @@ class NotificationService {
   }
 
   /// 排一条提醒。[when] 应该是未来的本地时间。
+  ///
+  /// [repeatDaily] 为 true 时（v1.8.2）用 `DateTimeComponents.time` 让它**每天
+  /// 同一时刻**重复 —— 这是插件的做法：只比对「时:分」，日期部分被忽略。
+  /// 注意即使每天重复，[when] 也要传一个**未来的**时刻，否则插件不排。
   static Future<void> scheduleFor(
     String noteId,
     String title,
     DateTime when, {
     String body = '到时间啦，点开看看',
     bool lesson = false,
+    bool repeatDaily = false,
   }) async {
+    // 测试钩子：桌面上没有真插件，调下去就抛 MissingPluginException，
+    // 断言不到「排的是什么」。所以在调插件**之前**把参数记下来。
+    debugLastSchedule = (when: when, daily: repeatDaily, noteId: noteId);
+
     await init();
     await _plugin.zonedSchedule(
       _idOf(noteId),
@@ -220,8 +229,13 @@ class NotificationService {
       androidScheduleMode: await _mode(),
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents:
+          repeatDaily ? DateTimeComponents.time : null,
     );
   }
+
+  /// 最近一次排程的参数（测试用；null = 还没排过）。
+  static ({DateTime when, bool daily, String noteId})? debugLastSchedule;
 
   /// 按 id 排一条（上课提醒用：id 由 lesson_reminder 算好）。
   static Future<void> scheduleRaw(

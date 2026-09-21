@@ -9,6 +9,7 @@
 library;
 
 import 'lesson_reminder.dart';
+import 'notes_logic.dart' show nextDailyOccurrence;
 import 'notification_service.dart';
 import 'store.dart';
 
@@ -62,11 +63,28 @@ class ReminderScheduler {
       final notes = store.notes().notes;
       for (final n in notes) {
         final when = DateTime.tryParse(n.remindAt);
-        // 已经过时的老提醒先撤掉，免得堆在系统里
-        if (when == null || !when.isAfter(now)) {
+        if (when == null) {
           if (n.remindAt.isNotEmpty) {
             await NotificationService.cancel(n.id);
           }
+          continue;
+        }
+        // 每天重复的（v1.8.2）：存的那个时刻**必然**是过去的（设的时候是「今天 08:00」，
+        // 明天再重排它就已经过期了），所以**不能走下面的「过期就撤」** ——
+        // 一走就把用户设的每天提醒撤没了，第二天收不到。
+        // 正确做法：现算下一次该响的时刻，重新排一遍。
+        if (n.remindDaily) {
+          await NotificationService.scheduleFor(
+            n.id,
+            n.title,
+            nextDailyOccurrence(when, now),
+            repeatDaily: true,
+          );
+          continue;
+        }
+        // 单次的：已经过时的先撤掉，免得堆在系统里
+        if (!when.isAfter(now)) {
+          await NotificationService.cancel(n.id);
           continue;
         }
         await NotificationService.scheduleFor(n.id, n.title, when);

@@ -179,7 +179,6 @@ class HomeNotePreview {
     required this.id,
     required this.title,
     required this.type,
-    required this.tags,
     required this.summary,
     required this.pinned,
     required this.items,
@@ -193,7 +192,8 @@ class HomeNotePreview {
   final String id;
   final String title;
   final String type;
-  final List<String> tags;
+
+  /// v1.9.1：标签功能去掉了，速览不再带 tags（凯森要求删标签）。
   final String summary;
   final bool pinned;
 
@@ -239,7 +239,6 @@ List<HomeNotePreview> previewNotes(
       id: n.id,
       title: n.title.isEmpty ? '无标题' : n.title,
       type: n.type,
-      tags: List<String>.from(n.tags),
       // 清单永远给「x/y 项完成」（0 项也给，和电脑版 api_home 一致）；
       // 笔记给正文第一行，截 24 个字符（不 trim，照抄）。
       summary: n.isTodo

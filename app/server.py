@@ -26,7 +26,9 @@ ROOT_DIR = os.path.dirname(APP_DIR)
 sys.path.insert(0, APP_DIR)
 import store  # noqa: E402
 
-APP_VERSION = '1.2.0'
+# 去掉备忘录标签（连数据一起清）+ 首页速览内容默认收起，
+# 跟手机版 v1.9.0 对齐。
+APP_VERSION = '1.3.0'
 CST = timezone(timedelta(hours=8))
 
 
@@ -416,7 +418,7 @@ def api_home(h, ctx):
             'id': n.get('id'),
             'title': n.get('title') or '无标题',
             'type': n.get('type') or 'text',
-            'tags': n.get('tags') or [],
+            # 'tags' 不再带了（去掉标签功能）；前端那一行改成只显示类型
             'summary': ('%d/%d 项完成' % (done, total)) if n.get('type') == 'todo'
                        else (n.get('body') or '').split('\n')[0][:24],
             'pinned': n.get('pinned'),

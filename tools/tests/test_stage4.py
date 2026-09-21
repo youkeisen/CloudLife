@@ -40,14 +40,23 @@ class TestStage4(ServerTestCase):
         again = [x for x in self.notes() if x['id'] == n['id']][0]
         self.assertTrue(again['items'][0]['done'])
 
-    def test_update_title_body_tags(self):
+    def test_update_title_body(self):
+        # 2026-09-22：标签功能去掉后，这条不再测 tags（原来的 test_update_title_body_tags）
         n = self.add('原标题')
         self.srv.ok('/api/notes', 'PUT', {'id': n['id'], 'title': '新标题',
-                                          'body': '第一行\n第二行', 'tags': ['生活', '临时']})
+                                          'body': '第一行\n第二行'})
         again = [x for x in self.notes() if x['id'] == n['id']][0]
         self.assertEqual(again['title'], '新标题')
         self.assertIn('第二行', again['body'])
-        self.assertEqual(again['tags'], ['生活', '临时'])
+
+    def test_update_ignores_tags_from_client(self):
+        """老页面缓存可能还在发 tags，后端不能因此把字段写回去。"""
+        n = self.add('随手记')
+        self.srv.ok('/api/notes', 'PUT', {'id': n['id'], 'title': '改过',
+                                          'tags': ['生活', '临时']})
+        again = [x for x in self.notes() if x['id'] == n['id']][0]
+        self.assertEqual(again['title'], '改过')
+        self.assertNotIn('tags', again, '去掉标签功能后不该再写这个字段')
 
     def test_pinned_sorts_first(self):
         self.add('普通')

@@ -56,6 +56,7 @@ def init(data_dir):
     os.makedirs(_data_dir, exist_ok=True)
     os.makedirs(backups_dir(), exist_ok=True)
     ensure_files()
+    drop_legacy_note_tags()
     return _data_dir
 
 
@@ -93,6 +94,29 @@ def ensure_files():
         p = filepath(name)
         if not os.path.isfile(p):
             write(name, _default_of(name))
+
+
+def drop_legacy_note_tags():
+    """把存量数据里的旧 tags 字段抹掉（去掉标签功能，和手机版对齐）。
+
+    为什么非要单独清一遍：「不再解析 tags」清不掉文件里的旧数据 ——
+    用户没编辑过的笔记不会重写，那些 tags 会一直躺在 notes.json 里。
+    所以启动时扫一遍、有残留才重写（没残留不写，否则每次启动都写一次文件）。
+    """
+    try:
+        obj = read('notes')
+    except Exception:
+        return
+    notes = obj.get('notes')
+    if not isinstance(notes, list):
+        return
+    changed = False
+    for n in notes:
+        if isinstance(n, dict) and 'tags' in n:
+            n.pop('tags', None)
+            changed = True
+    if changed:
+        write('notes', obj)
 
 
 def write(name, obj):
@@ -606,7 +630,6 @@ def add_note(data):
         'body': str(data.get('body') or ''),
         'items': [{'text': str(i.get('text', '')), 'done': bool(i.get('done'))}
                   for i in (data.get('items') or [])],
-        'tags': [str(t).strip() for t in (data.get('tags') or []) if str(t).strip()],
         'pinned': bool(data.get('pinned')),
         'archived': bool(data.get('archived')),
         'createdAt': datetime.now(CST).isoformat(timespec='seconds'),
@@ -622,7 +645,7 @@ def update_note(data):
     notes = read('notes').get('notes', [])
     for n in notes:
         if n.get('id') == cid:
-            for field in ('title', 'type', 'body', 'items', 'tags', 'pinned', 'archived'):
+            for field in ('title', 'type', 'body', 'items', 'pinned', 'archived'):
                 if field in data:
                     n[field] = data[field]
             n['updatedAt'] = datetime.now(CST).isoformat(timespec='seconds')

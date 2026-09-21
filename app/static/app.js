@@ -883,14 +883,14 @@ var notesBound = false;
 var saveTimer = null;
 var noteDirty = false;
 
+/* 分组：全部 / 置顶 / 归档。
+   以前还会按标签生成「tag:xxx」分组，2026-09-22 去掉标签功能后没了
+   （和手机版对齐）。 */
 function noteGroupsHtml() {
   var notes = State.notes || [];
   var visible = notes.filter(function (n) { return !n.archived; });
-  var tags = {};
-  visible.forEach(function (n) { (n.tags || []).forEach(function (t) { tags[t] = (tags[t] || 0) + 1; }); });
   var items = [{ key: 'all', label: '全部', cnt: visible.length },
     { key: 'pinned', label: '置顶', cnt: visible.filter(function (n) { return n.pinned; }).length }];
-  Object.keys(tags).forEach(function (t) { items.push({ key: 'tag:' + t, label: t, cnt: tags[t] }); });
   items.push({ key: 'archived', label: '归档', cnt: notes.filter(function (n) { return n.archived; }).length });
   return items.map(function (i) {
     return '<div class="grp' + (noteGroup === i.key ? ' on' : '') + '" data-g="' + esc(i.key) + '">' +
@@ -905,10 +905,7 @@ function filteredNotes() {
     if (noteGroup === 'all') return !n.archived;
     if (noteGroup === 'pinned') return !n.archived && n.pinned;
     if (noteGroup === 'archived') return !!n.archived;
-    if (noteGroup.indexOf('tag:') === 0) {
-      var tag = noteGroup.slice(4);
-      return !n.archived && (n.tags || []).indexOf(tag) >= 0;
-    }
+    // 认不出来的分组键（比如旧数据里的 tag:xxx）兜底返回全部
     return true;
   });
   if (!q) return list;
@@ -978,12 +975,10 @@ function noteSummary(n) {
   return (n.body || '').split('\n')[0].slice(0, 20);
 }
 
-/* 列表第二行：类型 + 标签 + 摘要。没标签就不写「未分类」——
-   免得看着像「这条笔记没归到任何类别」，其实它的类别就是「笔记」。 */
+/* 列表第二行：类型 + 摘要（2026-09-22 起不再拼标签）。
+   也没写「未分类」——免得看着像「这条笔记缺了什么」。 */
 function noteSubLine(n) {
   var bits = [noteTypeText(n)];
-  var tags = (n.tags || []).filter(Boolean);
-  if (tags.length) bits.push(tags.join('、'));
   var summary = noteSummary(n);
   if (summary) bits.push(summary);
   return bits.join(' · ');
@@ -1020,7 +1015,7 @@ function saveCurrentNote() {
   return api('/api/notes', {
     method: 'PUT',
     body: { id: n.id, title: n.title, type: n.type, body: n.body, items: n.items,
-            tags: n.tags, pinned: n.pinned, archived: n.archived }
+            pinned: n.pinned, archived: n.archived }
   }).then(function (saved) {
     var idx = State.notes.findIndex(function (x) { return x.id === saved.id; });
     if (idx >= 0) State.notes[idx] = saved;
@@ -1054,7 +1049,6 @@ function renderNoteDetail() {
 
   box.innerHTML =
     '<div class="field"><label>标题</label><input id="noteTitle" value="' + esc(n.title) + '"></div>' +
-    '<div class="field"><label>标签（逗号分隔）</label><input id="noteTags" value="' + esc((n.tags || []).join('、')) + '"></div>' +
     '<div class="field"><label>类型</label><select id="noteType">' +
     '<option value="text"' + (n.type === 'text' ? ' selected' : '') + '>笔记</option>' +
     '<option value="todo"' + (n.type === 'todo' ? ' selected' : '') + '>清单</option></select></div>' +
@@ -1067,10 +1061,6 @@ function renderNoteDetail() {
     '<button class="danger" id="delNote">删除</button></div>';
 
   $('noteTitle').addEventListener('input', function () { n.title = this.value; scheduleNoteSave(); });
-  $('noteTags').addEventListener('input', function () {
-    n.tags = this.value.split(/[,，、]/).map(function (s) { return s.trim(); }).filter(Boolean);
-    scheduleNoteSave();
-  });
   $('noteType').addEventListener('change', function () {
     n.type = this.value;
     if (n.type === 'todo' && !n.items.length) n.items = [{ text: '', done: false }];
@@ -1123,7 +1113,7 @@ function renderNoteDetail() {
 }
 
 function createNote() {
-  api('/api/notes', { method: 'POST', body: { title: '', type: 'text', tags: [] } })
+  api('/api/notes', { method: 'POST', body: { title: '', type: 'text' } })
     .then(function (n) {
       curNoteId = n.id;
       noteGroup = 'all';
@@ -1202,7 +1192,9 @@ function homeWeatherHtml(wxState) {
 }
 
 var homeNotesData = [];
-/* 每条速览的收放状态，默认展开；点小三角才收起 */
+/* 每条速览的收放状态。**默认收起**（2026-09-22 改，和手机版对齐：
+   首页是一眼扫过去的地方，内容全摊开会把卡片撑得很长）；
+   表里只记「用户手动展开过的那几条」。 */
 var homeNoteOpen = {};
 
 function homeNotesHtml(list) {
@@ -1210,8 +1202,7 @@ function homeNotesHtml(list) {
     return '<div class="empty"><b>还没有备忘录</b>想到什么随手记一条</div>';
   }
   return list.map(function (n) {
-    var tags = (n.tags || []).filter(Boolean);
-    var open = homeNoteOpen[n.id] !== false;
+    var open = homeNoteOpen[n.id] === true;
     var detail = '';
     if (n.body) {
       detail += '<div class="homeBody">' + esc(n.body) + (n.bodyCut ? '…' : '') + '</div>';
@@ -1235,7 +1226,7 @@ function homeNotesHtml(list) {
       '<span class="caret' + (open ? '' : ' closed') + '" data-caret="' + esc(n.id) +
       '" title="' + (open ? '收起' : '展开') + '"></span></div>' +
       '<span class="small faint">' + esc(n.summary || '空') + '</span></div>' +
-      '<span class="tag g">' + esc(tags.length ? tags.join('、') : noteTypeText(n)) + '</span></div>' +
+      '<span class="tag g">' + esc(noteTypeText(n)) + '</span></div>' +
       '<div class="homeNoteBody' + (open ? '' : ' closed') + '">' + detail + '</div></div>';
   }).join('');
 }

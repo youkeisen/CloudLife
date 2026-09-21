@@ -106,11 +106,11 @@ class TestToggleEndpoint(ServerTestCase):
 
     def test_toggle_keeps_note_title(self):
         n = self.make([{'text': 'a', 'done': False}])
-        self.srv.ok('/api/notes', 'PUT', {'id': n['id'], 'title': '别被冲掉', 'tags': ['重要']})
+        self.srv.ok('/api/notes', 'PUT', {'id': n['id'], 'title': '别被冲掉'})
         self.srv.ok('/api/notes/toggle', 'POST', {'id': n['id'], 'index': 0})
         note = [x for x in self.srv.ok('/api/notes?archived=1')['notes'] if x['id'] == n['id']][0]
         self.assertEqual(note['title'], '别被冲掉')
-        self.assertEqual(note['tags'], ['重要'])
+        self.assertNotIn('tags', note, '2026-09-22 起不再有标签字段')
         self.assertEqual(note['type'], 'todo')
 
     def test_home_summary_follows_toggle(self):

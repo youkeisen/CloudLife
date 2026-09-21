@@ -44,7 +44,8 @@ class TestNoMisleadingCategory(unittest.TestCase):
             self.assertIn(fn, js)
         body = fn_body(js, 'noteSubLine')
         self.assertIn('noteTypeText', body, '第二行要以「类型」开头')
-        self.assertIn('tags', body, '有标签时再带上标签')
+        # 2026-09-22 起不拼标签了（凯森要求去掉标签功能）
+        self.assertNotIn('tags', body, '第二行不该再有标签')
 
     def test_type_text_mapping(self):
         js = read_js()
@@ -58,7 +59,8 @@ class TestNoMisleadingCategory(unittest.TestCase):
         self.assertIn('noteSubLine', body)
         self.assertIn("class=\"p\"", body)
 
-    def test_home_preview_uses_type_when_no_tags(self):
+    def test_home_preview_uses_type(self):
+        # 原来叫 test_home_preview_uses_type_when_no_tags；没标签了，永远显示类型
         js = read_js()
         body = fn_body(js, 'homeNotesHtml')
         self.assertIn('noteTypeText', body)
@@ -124,11 +126,11 @@ class TestNoteApiContract(ServerTestCase):
         n = self.srv.ok('/api/notes', 'POST', {'title': '标题', 'type': 'text'})
         self.srv.ok('/api/notes', 'PUT', {'id': n['id'], 'title': '改过的标题',
                                           'type': 'text', 'body': '第一行\n第二行',
-                                          'tags': ['学习', '杂事'], 'pinned': True})
+                                          'pinned': True})
         got = [x for x in self.srv.ok('/api/notes')['notes'] if x['id'] == n['id']][0]
         self.assertEqual(got['title'], '改过的标题')
         self.assertEqual(got['body'], '第一行\n第二行')
-        self.assertEqual(got['tags'], ['学习', '杂事'])
+        self.assertNotIn('tags', got, '2026-09-22 起不再有标签字段')
         self.assertTrue(got['pinned'])
         self.assertEqual(got['type'], 'text')
 
@@ -142,9 +144,10 @@ class TestNoteApiContract(ServerTestCase):
         self.assertEqual(len(got['items']), 2)
 
     def test_empty_note_has_no_tags(self):
+        # 2026-09-22：标签字段整个删了，新建的笔记干脆没有这个键
         n = self.srv.ok('/api/notes', 'POST', {'title': ''})
         got = [x for x in self.srv.ok('/api/notes')['notes'] if x['id'] == n['id']][0]
-        self.assertEqual(got['tags'], [], '新建的笔记没有标签——列表就该显示类型而不是「未分类」')
+        self.assertNotIn('tags', got, '新建的笔记不该有 tags 字段')
         self.assertEqual(got['type'], 'text')
 
     def test_home_preview_carries_type(self):

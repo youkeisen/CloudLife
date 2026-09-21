@@ -66,8 +66,9 @@ class TestHomeNoteCollapseFrontend(unittest.TestCase):
         self.assertIn('homeNoteTitle', body)
 
     def test_caret_state_matches_open_flag(self):
+        # 2026-09-22：改成默认**收起**（和手机版对齐）
         body = fn_body(read_js(), 'homeNotesHtml')
-        self.assertIn("homeNoteOpen[n.id] !== false", body, '默认展开')
+        self.assertIn("homeNoteOpen[n.id] === true", body, '默认收起')
         self.assertIn("(open ? '' : ' closed')", body)
 
     def test_body_is_rendered(self):

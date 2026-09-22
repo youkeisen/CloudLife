@@ -1,6 +1,9 @@
 // 检查更新的逻辑测试：版本号解析 / 比较、从 release 列表里挑手机版、
 // check() 的四种结论（有新版 / 已最新 / 没有手机版 / 检查失败）。
 // 拉取函数是注入的，不联网。
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_day_phone/update_checker.dart';
 
@@ -115,6 +118,34 @@ void main() {
       final r = await checker.check('2.1.1');
       expect(r.status, UpdateStatus.error);
       expect(r.message, '网络断了');
+    });
+
+    test('底层 SocketException（GitHub 直连不通）也翻译成人话', () async {
+      final checker = UpdateChecker(
+        fetchReleases: () async => throw const SocketException('refused'),
+      );
+      final r = await checker.check('2.1.1');
+      expect(r.status, UpdateStatus.error);
+      expect(r.message, contains('连不上 GitHub'),
+          reason: '不能把异常原文怼到用户脸上');
+    });
+  });
+
+  group('describeNetworkError', () {
+    test('连接被拒 / 超时 / TLS 各给一句人话', () {
+      expect(describeNetworkError(const SocketException('refused')),
+          contains('连不上 GitHub'));
+      expect(describeNetworkError(TimeoutException('t', Duration(seconds: 1))),
+          contains('超时'));
+      expect(describeNetworkError(const HandshakeException('bad')),
+          contains('安全连接'));
+    });
+
+    test('已经是人话的异常原样透传', () {
+      expect(
+        describeNetworkError(UpdateCheckException('GitHub 限流了')),
+        'GitHub 限流了',
+      );
     });
   });
 }

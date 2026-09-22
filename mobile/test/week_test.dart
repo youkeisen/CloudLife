@@ -80,21 +80,6 @@ void main() {
     });
   });
 
-  group('一周的七天', () {
-    test('从周一到周日', () {
-      final days = datesOfWeek(2, monday);
-      expect(days.first, '2026-09-07');
-      expect(days.last, '2026-09-13');
-      expect(days.length, 7);
-      expect(dayOfWeek(parseIsoDate(days.first)!), 1, reason: '周一');
-      expect(dayOfWeek(parseIsoDate(days.last)!), 7, reason: '周日');
-    });
-
-    test('没设置日期时是空的', () {
-      expect(datesOfWeek(1, ''), isEmpty);
-    });
-  });
-
   group('天数差', () {
     test('跨月跨年', () {
       expect(daysBetween(DateTime(2026, 8, 31), DateTime(2026, 9, 1)), 1);

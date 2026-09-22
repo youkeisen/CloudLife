@@ -112,7 +112,6 @@ void main() {
       expect(back.week(3).single.name, '示例课程');
       expect(back.week(3).single.spanEnd, 'p2');
       expect(back.week(4), isEmpty);
-      expect(back.usedWeeks, <int>[3]);
     });
 
     test('备忘录的清单项和标签', () {
@@ -201,27 +200,7 @@ void main() {
     });
   });
 
-  group('备忘录摘要（列表第二行用）', () {
-    test('清单型显示完成进度', () {
-      final n = Note(
-        id: 'n',
-        type: NoteType.todo,
-        items: <NoteItem>[
-          NoteItem(text: 'a', done: true),
-          NoteItem(text: 'b'),
-        ],
-      );
-      expect(n.summary, '1/2 项完成');
-    });
-
-    test('空清单不硬凑文案', () {
-      expect(Note(id: 'n', type: NoteType.todo).summary, '');
-    });
-
-    test('笔记型取正文第一行', () {
-      expect(Note(id: 'n', body: '第一行\n第二行').summary, '第一行');
-    });
-
+  group('备忘录类型名', () {
     test('类型名字', () {
       expect(NoteType.label(NoteType.text), '笔记');
       expect(NoteType.label(NoteType.todo), '清单');

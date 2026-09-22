@@ -48,12 +48,3 @@ String? mondayOf(int week, String week1Monday) {
 
 /// 星期几：1=周一 … 7=周日（和电脑版、和课程数据的 day 字段一致）。
 int dayOfWeek(DateTime date) => date.weekday;
-
-/// 第 N 周那七天的日期（周一起）。
-List<String> datesOfWeek(int week, String week1Monday) {
-  final monday = mondayOf(week, week1Monday);
-  if (monday == null) return const <String>[];
-  final start = parseIsoDate(monday);
-  if (start == null) return const <String>[];
-  return List<String>.generate(7, (i) => isoOf(start.add(Duration(days: i))));
-}

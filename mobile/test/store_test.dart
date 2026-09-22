@@ -295,7 +295,6 @@ void main() {
       ]);
       expect(store.listWeek(3).single.name, '示例课程');
       expect(store.listWeek(4), isEmpty);
-      expect(store.courses().usedWeeks, <int>[3]);
     });
 
     test('清空某一周（和电脑版一样留一个空数组）', () {

@@ -718,6 +718,8 @@ void main() {
     expect(find.text('已经是最新版本'), findsOneWidget);
     expect(find.byKey(const ValueKey('btn-download-update')), findsNothing,
         reason: '没有新版本不该弹窗');
+    expect(find.byKey(const ValueKey('btn-open-releases')), findsNothing,
+        reason: '检查成功不该给「去发布页」兜底入口');
   });
 
   testWidgets('检查更新：失败给一句能看懂的原因', (tester) async {
@@ -729,6 +731,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('检查失败：网络断了'), findsOneWidget);
+    expect(find.byKey(const ValueKey('btn-open-releases')), findsOneWidget,
+        reason: '失败后要有「去发布页」兜底入口');
     expect(find.byKey(const ValueKey('btn-download-update')), findsNothing);
   });
 

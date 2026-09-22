@@ -57,10 +57,9 @@ class FeaturesPage extends StatelessWidget {
     final payload = store.weatherCache().payload;
     if (payload == null) return city.name;
     final cur = asMap(payload['current']);
-    final temp = asDoubleOrNull(cur['temp']);
     final text = asString(cur['text']);
-    if (temp == null) return city.name;
-    final t = temp == temp.roundToDouble() ? '${temp.round()}' : '$temp';
+    // 占位符传空串：没温度时这一段会被下面的 join 过滤掉
+    final t = fmtTemp(cur['temp'], '');
     return <String>[city.name, '$t°', text]
         .where((x) => x.isNotEmpty)
         .join(' ');

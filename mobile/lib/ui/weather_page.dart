@@ -207,12 +207,6 @@ class _WeatherPageState extends State<WeatherPage> {
   String _numText(dynamic v, [String suffix = '']) =>
       (v == null || v == '') ? '—' : '$v$suffix';
 
-  String _fmtTemp(dynamic v) {
-    final d = asDoubleOrNull(v);
-    if (d == null) return '--';
-    return d == d.roundToDouble() ? '${d.round()}' : '$d';
-  }
-
   String weekdayCn(String date) {
     const names = <String>['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     final d = DateTime.tryParse(date);
@@ -419,7 +413,7 @@ class _WeatherPageState extends State<WeatherPage> {
                 labels: <String>[
                   for (final h in hours) asString(asMap(h)['time']),
                 ],
-                nowTemp: _fmtTemp(cur['temp']),
+                nowTemp: fmtTemp(cur['temp']),
               ),
             ],
           ),
@@ -576,7 +570,7 @@ class _WeatherPageState extends State<WeatherPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text(
-                            _fmtTemp(cur['temp']),
+                            fmtTemp(cur['temp']),
                             key: const ValueKey('wx-temp'),
                             style: Type.display.copyWith(color: Colors.white),
                           ),

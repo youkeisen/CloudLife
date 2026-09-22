@@ -263,12 +263,6 @@ ParsedTimetable parsePdfTimetableFromLines(List<RectLine> lines) {
   // 同一格子的换行文字 x 区间相互嵌套（居中对齐），邻格的不相交；
   // 所以按「x 区间是否重叠」聚簇就能把一天的文字重新分成格子，
   // 每簇按 (y, x) 排序后用「(起-止节)」标记切课程。这样场地/教师最全。
-  // ignore: avoid_print
-  print('[debug] buckets=${lineBuckets.length} coursesAfterA=${courses.length}');
-  lineBuckets.forEach((k, v) {
-    // ignore: avoid_print
-    print('[bucket] $k => ${v.join(' | ').substring(0, v.join(' | ').length > 100 ? 100 : v.join(' | ').length)}');
-  });
   final byKey = <String, int>{};
   for (var i = 0; i < courses.length; i++) {
     final c = courses[i];
@@ -330,8 +324,6 @@ ParsedTimetable parsePdfTimetableFromLines(List<RectLine> lines) {
   if (courses.isEmpty) {
     throw TimetableError('这份 PDF 里没读到任何带周次的课程，确认一下是不是课表本身');
   }
-  // ignore: avoid_print
-  print('[debug] coursesAfterB=${courses.length}');
 
   return ParsedTimetable(
     sheet: 'PDF',

@@ -155,6 +155,11 @@ class UpdateChecker {
   static const String defaultApiBase =
       'https://api.github.com/repos/youkeisen/CloudLife/releases';
 
+  /// 发布页地址：检查失败时的兜底入口（应用内连不上 GitHub 时，
+  /// 浏览器有时候反而能开——比如浏览器自己走了代理）。
+  static const String releasesPageUrl =
+      'https://github.com/youkeisen/CloudLife/releases';
+
   final String apiBase;
   final Duration timeout;
 
@@ -173,8 +178,7 @@ class UpdateChecker {
       }
       return const UpdateCheckResult.upToDate('已经是最新版本');
     } catch (e) {
-      return UpdateCheckResult.error(
-          e is UpdateCheckException ? e.message : e.toString());
+      return UpdateCheckResult.error(describeNetworkError(e));
     }
   }
 
@@ -188,7 +192,11 @@ class UpdateChecker {
       final response = await request.close().timeout(timeout);
       if (response.statusCode != 200) {
         await response.drain<void>().timeout(timeout);
-        throw UpdateCheckException('HTTP ${response.statusCode}');
+        throw UpdateCheckException(switch (response.statusCode) {
+          403 => 'GitHub 限流了（未登录请求每小时次数有限），过阵子再试',
+          404 => '找不到发布仓库，可能链接配错了',
+          _ => 'GitHub 返回了 HTTP ${response.statusCode}',
+        });
       }
       final text = await response.transform(utf8.decoder).join().timeout(timeout);
       final obj = jsonDecode(text);
@@ -196,10 +204,26 @@ class UpdateChecker {
       throw UpdateCheckException('返回的不是列表');
     } on UpdateCheckException {
       rethrow;
-    } catch (e) {
-      throw UpdateCheckException(e.toString());
     } finally {
       client.close(force: true);
     }
   }
+}
+
+/// 把底层网络异常翻译成人话——检查失败时用户看到的是这句，
+/// 不能把 SocketException 原文怼到脸上（v2.1.1 有台手机就是
+/// 「Connection refused → api.github.com」，直连 GitHub 不通）。
+String describeNetworkError(Object e) {
+  if (e is UpdateCheckException) return e.message;
+  if (e is SocketException) {
+    return '连不上 GitHub——当前网络多半访问不了 GitHub，'
+        '换个 Wi-Fi / 流量，或开了代理再试';
+  }
+  if (e is TimeoutException) {
+    return '连接超时——GitHub 访问不了或网络太慢，稍后再试';
+  }
+  if (e is HandshakeException) {
+    return '安全连接建立失败——当前网络可能限制了 GitHub';
+  }
+  return '网络出了问题：$e';
 }

@@ -87,7 +87,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 #   +48 = 2.1.1 的第一个包。
 #   +49 = 天气小卡大温度下面加今天最低 / 最高。
 #   +50 = 设置 → 关于加「检查更新」（GitHub Releases + 弹窗 + 去下载）。
-version: 2.1.1+50
+version: 2.1.2+51
 
 environment:
   sdk: ^3.13.3
@@ -107,9 +107,6 @@ dependencies:
     sdk: flutter
   package_info_plus: ^8.0.0
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
 
   # 拼路径、取应用私有目录（数据存在手机本机，不上云）
   path: ^1.9.0

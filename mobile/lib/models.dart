@@ -35,6 +35,14 @@ double? asDoubleOrNull(dynamic v) {
   return null;
 }
 
+/// 温度显示统一走这里：整数就去掉小数点（21.0 → 21），
+/// 非数字给占位符（默认 `--`，传空串可以配合 join 过滤掉）。
+String fmtTemp(dynamic v, [String placeholder = '--']) {
+  final d = asDoubleOrNull(v);
+  if (d == null) return placeholder;
+  return d == d.roundToDouble() ? '${d.round()}' : '$d';
+}
+
 bool asBool(dynamic v) => v == true || v == 'true' || v == 1;
 
 /// 规范提醒方式：只认 daily / days，**别的一律当单次**。
@@ -132,6 +140,8 @@ class City {
   String name;
   double? latitude;
   double? longitude;
+
+  /// 跟着备份序列化走；天气请求目前固定用 `defaultTimezone`，暂未消费。
   String timezone;
   Map<String, dynamic> extra;
 
@@ -187,6 +197,8 @@ class Place {
   String admin;
   double latitude;
   double longitude;
+
+  /// 跟着备份序列化走；天气请求目前固定用 `defaultTimezone`，暂未消费。
   String timezone;
   Map<String, dynamic> extra;
 
@@ -337,19 +349,6 @@ class Settings {
         'theme': theme,
       };
 
-  Period? periodById(String id) {
-    for (final p in periods) {
-      if (p.id == id) return p;
-    }
-    return null;
-  }
-
-  Place? placeById(String id) {
-    for (final p in weatherCities) {
-      if (p.id == id) return p;
-    }
-    return null;
-  }
 }
 
 // ---------- 课程 ----------
@@ -478,8 +477,6 @@ class Courses {
   void setWeek(int w, List<Lesson> lessons) {
     weeks[w] = List<Lesson>.from(lessons);
   }
-
-  List<int> get usedWeeks => weeks.keys.toList()..sort();
 }
 
 // ---------- 备忘录 ----------
@@ -598,14 +595,6 @@ class Note {
   bool get isTodo => type == NoteType.todo;
   int get itemsTotal => items.length;
   int get itemsDone => items.where((i) => i.done).length;
-
-  /// 列表第二行要显示的摘要（和电脑版一致）。
-  String get summary {
-    if (isTodo) {
-      return items.isEmpty ? '' : '$itemsDone/$itemsTotal 项完成';
-    }
-    return body.split('\n').first.trim();
-  }
 
   factory Note.fromJson(Map<String, dynamic> json) => Note(
         id: asString(json['id']),

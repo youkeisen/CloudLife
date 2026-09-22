@@ -144,19 +144,22 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   /// 底部导航：白底半透明 + 背景模糊 + 顶部 1px 描边，高 60（另加安全区）。
+  ///
+  /// 背景色必须包住**含安全区在内的整个高度**：以前色画在安全区
+  /// Padding 的里面，底下那条露出页面内容（文字从导航下面透过去）。
   Widget _tabBar() {
     final tone = Tone.of(context);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: safeBottom),
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: tone.surface.withValues(alpha: .88),
-              border: Border(top: BorderSide(color: tone.ink200)),
-            ),
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: tone.surface.withValues(alpha: .88),
+            border: Border(top: BorderSide(color: tone.ink200)),
+          ),
+          child: Padding(
+            padding: EdgeInsets.only(bottom: safeBottom),
             child: SizedBox(
               height: 60,
               child: Row(

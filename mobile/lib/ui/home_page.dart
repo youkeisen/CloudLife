@@ -559,7 +559,7 @@ class _HomePageState extends State<HomePage> {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Text(
-            temp == null ? '--°' : '${_fmtNum(temp)}°',
+            temp == null ? '--°' : '${fmtTemp(temp)}°',
             key: const ValueKey('home-wx-temp'),
             style: Type.num(Type.h3).copyWith(
               fontSize: 27,
@@ -574,7 +574,7 @@ class _HomePageState extends State<HomePage> {
               key: const ValueKey('home-wx-range'),
               padding: const EdgeInsets.only(top: 2),
               child: Text(
-                '${_fmtNum(minT)}° / ${_fmtNum(maxT)}°',
+                '${fmtTemp(minT)}° / ${fmtTemp(maxT)}°',
                 style: Type.num(Type.sm).copyWith(color: tone.ink400),
               ),
             ),
@@ -608,8 +608,6 @@ class _HomePageState extends State<HomePage> {
       onTap: widget.onOpenWeather,
     );
   }
-
-  String _fmtNum(double v) => v == v.roundToDouble() ? '${v.round()}' : '$v';
 
   Widget _miniMemo() {
     final tone = Tone.of(context);

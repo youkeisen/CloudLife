@@ -765,29 +765,6 @@ class EmptyHint extends StatelessWidget {
   }
 }
 
-/// 一行「标签 — 值」。
-class KvRow extends StatelessWidget {
-  const KvRow({super.key, required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final tone = Tone.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        children: <Widget>[
-          Text(label, style: Type.sm.copyWith(color: tone.ink400)),
-          const Spacer(),
-          Text(value, style: Type.num(Type.body).copyWith(color: tone.ink900)),
-        ],
-      ),
-    );
-  }
-}
-
 /// 页面页头：左边「大标题 + 一行副标题」，右边周次胶囊。
 ///
 /// 首页不用它（首页的页头是「日期 + 问候语」，见 `home_page.dart`）。

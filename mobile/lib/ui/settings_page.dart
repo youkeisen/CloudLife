@@ -1087,6 +1087,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     style: Type.sm.copyWith(color: cs.outline),
                   ),
                 ),
+                // 检查失败（多半是网络访问不了 GitHub）时给个兜底入口：
+                // 浏览器有时候反而打得开发布页。
+                if (_updateCheckFailed)
+                  TextButton(
+                    key: const ValueKey('btn-open-releases'),
+                    onPressed: _openReleasesPage,
+                    child: const Text('去发布页'),
+                  ),
               ]),
               const SizedBox(height: 12),
               const Text('更新日志', style: Type.h3),
@@ -1145,6 +1153,7 @@ class _SettingsPageState extends State<SettingsPage> {
   // ---------- 检查更新 ----------
   bool _checkingUpdate = false;
   String? _updateStatus;
+  bool _updateCheckFailed = false;
 
   /// 设置 → 关于 → 检查更新：手动查一次 GitHub Release。
   /// 有新版本时弹更新窗（版本号 + 发布说明 + 下载入口）。
@@ -1162,6 +1171,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
     setState(() {
       _checkingUpdate = false;
+      _updateCheckFailed = result.status == UpdateStatus.error;
       switch (result.status) {
         case UpdateStatus.upToDate:
           _updateStatus = result.message ?? '已经是最新版本';
@@ -1173,6 +1183,16 @@ class _SettingsPageState extends State<SettingsPage> {
     });
     if (result.status == UpdateStatus.available && result.release != null) {
       _showUpdateDialog(result.release!);
+    }
+  }
+
+  /// 检查失败时的兜底：直接用系统浏览器开发布页。
+  Future<void> _openReleasesPage() async {
+    try {
+      await launchUrl(Uri.parse(UpdateChecker.releasesPageUrl),
+          mode: LaunchMode.externalApplication);
+    } catch (e) {
+      _toast('打不开浏览器：$e');
     }
   }
 

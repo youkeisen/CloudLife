@@ -1330,3 +1330,70 @@ v2.0 不是「再换一次色」，而是**配色体系 + 字阶 + 逐页布局*
 全自动按颜色分割 + 整张识别 / 纯对照稿），他选了**先不做**——维持现状：
 xlsx / PDF 导入 + 手动加课。以后除非他主动再提，别主动把这个方案端出来。
 
+
+### v2.1.1 之后：全库清仓（2026-09-22）
+
+发完 2.1.1 后做了一次「找没用的东西删掉」的维护，纯清理，不改任何行为。
+
+**删掉的死代码**（都核实过除定义外零引用）：
+
+- `Settings.periodById()` / `Settings.placeById()`（models.dart）——写了没用的查找函数
+- `Courses.usedWeeks`（models.dart）——只有测试在用
+- `Note.summary`（models.dart）——v1.x 列表副标题的遗留；现在列表第二行走
+  `notes_logic.noteSubLine`，首页速览用 `HomeNotePreview.summary`，跟它没关系
+- `datesOfWeek()`（week.dart）——只有测试在用
+- `KvRow`（design.dart）——2.0 重排后没人用的组件
+- `cupertino_icons` 依赖（pubspec）——全库没有一处 import；顺手 `pub get` 清了 lock
+- `pdf_timetable.dart` 里 3 处 `[debug]` 调试打印——正式导入 PDF 流程里的，
+  每次导入都会打到控制台，删了
+
+**收敛的重复**：温度「整数去小数」的格式化原来写了三份
+（weather_page `_fmtTemp` / home_page `_fmtNum` / features_page 内联），
+统一成 models.dart 的 `fmtTemp(v, [placeholder])`，紧挨着 `asDoubleOrNull`。
+
+**留着没动的（有意保留）**：
+
+- `Note.copyWith`——只有回归测试在用，但它是 v1.9.1「copyWith 弄丢提醒」那个
+  bug 的回归载体，留着当防线
+- `City.timezone` / `Place.timezone`——业务上还没消费（请求写死
+  `defaultTimezone`），但随 settings.json 走备份序列化，不能删；字段上已加注释标明
+- `NotificationService.debugSetPermissions` 等——刻意的测试注入后门
+- `minutesFromHhmm` / `minutesOfHhmm` 重复——注释写明是有意解耦，不合并
+- 星期中文名写了三份（home_logic / ledger_logic / timetable）——timetable 是
+  独立解析模块不强求，前两份量太小，收敛收益不够
+
+**核对过没问题的**：pubspec 其余依赖全有 import；assets 段本来就是空模板、
+没有资源文件；全库无 TODO / FIXME / 注释掉的代码块；`withOpacity` 已全部是
+`withValues`；所有页面和组件都有挂载点，无遗留孤儿。
+
+清理后 `flutter analyze` 无问题，测试 469 条全绿（少的 5 条就是删掉的
+死符号的测试）。
+
+
+### v2.1.2：两台手机的反馈（2026-09-22 晚）
+
+凯森给了两台手机的截图，各一个问题：
+
+1. **「检查更新」在另一台手机上用不了**：点完报
+   `检查失败: SocketException: Connection refused … api.github.com`——
+   那台手机的网络直连 GitHub API 不通，而原来失败时是把异常**原文**怼给用户。
+
+   修法（`update_checker.dart` + `settings_page.dart`）：
+   - 新增 `describeNetworkError()`：SocketException / TimeoutException /
+     HandshakeException 各翻译成一句人话（「连不上 GitHub——换个 Wi-Fi /
+     流量，或开了代理再试」这类），人话异常（UpdateCheckException）原样透传；
+     HTTP 403/404 也给了对应说明（限流 / 仓库链接错）。
+   - `UpdateChecker.releasesPageUrl` 常量；检查失败后状态行旁边出
+     「去发布页」按钮，`url_launcher` 用系统浏览器开发布页——
+     应用内 HttpClient 连不上时浏览器不一定也连不上（浏览器可能走代理）。
+   - 测试：错误翻译单测 + check() 收到 SocketException 给人话 +
+     设置页失败时按钮在场、成功时不在场。
+
+2. **底部导航下面透出页面文字**（深色模式截图里更新日志的字从导航条底下露出来）：
+   根因是 `_tabBar()` 的背景色画在 `Padding(bottom: safeBottom)` 的**里面**——
+   60 高的条有底色，安全区那条高度没底色，`extendBody: true` 的内容从那透出来。
+   修法：把 Padding 挪进 DecoratedBox 里面，背景（含模糊）铺满整个高度。
+
+版本 2.1.2+51，changelog 加了两条。老规矩：**APK 已出好等凯森装上确认，
+他点头之前不发 Release**。
+

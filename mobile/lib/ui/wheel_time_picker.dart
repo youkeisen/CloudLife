@@ -5,6 +5,8 @@ library;
 import 'package:flutter/cupertino.dart' show CupertinoPicker, FixedExtentScrollController;
 import 'package:flutter/material.dart';
 
+import 'design.dart';
+
 /// 弹出滚轮时间选择，返回选中的时间；取消返回 null。
 Future<TimeOfDay?> showWheelTimePicker(
     BuildContext context, TimeOfDay initial) {
@@ -29,7 +31,7 @@ Future<TimeOfDay?> showWheelTimePicker(
                   for (var h = 0; h < 24; h++)
                     Center(
                       child: Text(h.toString().padLeft(2, '0'),
-                          style: const TextStyle(fontSize: 20)),
+                          style: Type.h2),
                     ),
                 ],
               ),
@@ -45,7 +47,7 @@ Future<TimeOfDay?> showWheelTimePicker(
                   for (var m = 0; m < 60; m++)
                     Center(
                       child: Text(m.toString().padLeft(2, '0'),
-                          style: const TextStyle(fontSize: 20)),
+                          style: Type.h2),
                     ),
                 ],
               ),

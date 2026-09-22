@@ -175,7 +175,10 @@ void main() {
 
     expect(find.textContaining('24.5'), findsWidgets,
         reason: '大字温度 24.5° 至少出现一次');
-    expect(find.textContaining('晴 · 示例市'), findsOneWidget);
+    // v2.0：主卡上「天气」和「地点」分开显示（地点带定位图标那行）
+    // 「晴」在 7 天预报里也会出现，所以只要求「至少一处」
+    expect(find.text('晴'), findsWidgets);
+    expect(find.textContaining('示例市'), findsWidgets);
     expect(find.textContaining('更新于'), findsOneWidget);
     expect(find.textContaining('Open-Meteo'), findsOneWidget);
     expect(api.forecastCalls, 1);

@@ -64,6 +64,7 @@ class LessonState {
     required this.order,
     required this.seq,
     this.begin,
+    this.finish,
     this.next = false,
   });
 
@@ -86,6 +87,10 @@ class LessonState {
 
   /// 开始的分钟数；节次没设时间时为 null。
   final int? begin;
+
+  /// 结束的分钟数（跨零点已按次日凌晨折算）；节次没设时间时为 null。
+  /// 首页的「正在上课」卡用它算进度条和「剩余 N 分钟」。
+  final int? finish;
 
   /// 今天接下来要上的那节课（第一个 upcoming）。
   bool next;
@@ -122,9 +127,11 @@ List<LessonState> computeLessonStates(
     final finish = finishP == null ? null : minutesFromHhmm(finishP.end);
 
     var status = 'unknown';
+    int? finishAdj = finish;
     if (begin != null && finish != null) {
       var fin = finish;
       if (fin < begin) fin += 24 * 60; // 跨零点，按次日凌晨处理
+      finishAdj = fin;
       if (nowMin < begin) {
         status = 'upcoming';
       } else if (begin <= nowMin && nowMin <= fin) {
@@ -143,6 +150,7 @@ List<LessonState> computeLessonStates(
       periodRange: range.isEmpty ? '时间未设置' : range,
       status: status,
       begin: begin,
+      finish: finishAdj,
       order: order,
       seq: seq++,
     ));

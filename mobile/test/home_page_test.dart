@@ -117,8 +117,9 @@ void main() {
     expect(find.byKey(const ValueKey('page-home')), findsOneWidget);
     expect(find.byKey(const ValueKey('home-greet')), findsOneWidget);
     expect(find.byKey(const ValueKey('home-date')), findsOneWidget);
-    expect(find.text('未设置教学周'), findsOneWidget);
-    expect(find.text('今日 0 节课'), findsOneWidget);
+    // v2.0：首页页头是三栏状态条（本周 / 今日课程 / 下一节），值和标签分开显示
+    expect(find.text('教学周未设置'), findsOneWidget);
+    expect(find.text('0 节'), findsOneWidget);
     expect(find.text('还没有任何节次'), findsOneWidget);
     expect(find.text('还没选城市'), findsOneWidget);
     expect(find.text('还没有备忘录'), findsOneWidget);
@@ -160,12 +161,14 @@ void main() {
     store.saveCourses(courses);
 
     await pumpHome(tester);
-    expect(find.text('今日 2 节课'), findsOneWidget);
+    expect(find.text('2 节'), findsOneWidget);
     expect(find.text('示例课一'), findsOneWidget);
     expect(find.text('示例课二'), findsOneWidget);
-    expect(find.text('下一节'), findsOneWidget, reason: '没上完时，第一个 upcoming 的课要带「下一节」');
-    expect(find.text('示例楼101 · 张老师'), findsOneWidget);
-    expect(find.text('示例楼202'), findsOneWidget);
+    // 「下一节」现在是状态条里那一栏（原来挂在课行的小胶囊上）
+    expect(find.text('下一节'), findsOneWidget);
+    // v2.0：课行改成时间轴，副标题是「节次 · 地点 · 老师」拼起来的
+    expect(find.textContaining('示例楼101 · 张老师'), findsOneWidget);
+    expect(find.textContaining('示例楼202'), findsOneWidget);
   });
 
   testWidgets('设了节次但没设教学周 → 「还不知道今天是第几周」', (tester) async {
@@ -181,7 +184,11 @@ void main() {
     await pumpHome(tester);
     expect(find.byKey(const ValueKey('home-wx-temp')), findsOneWidget);
     expect(find.text('24.5°'), findsOneWidget);
-    expect(find.text('晴 · 示例市'), findsOneWidget);
+    // v2.1.1：大温度下面带一行今天的最低 / 最高
+    expect(find.byKey(const ValueKey('home-wx-range')), findsOneWidget);
+    expect(find.textContaining('° / '), findsOneWidget);
+    // v2.0：天气变成双列小卡，副标题拼「天气 · 城市 · 湿度」
+    expect(find.textContaining('晴 · 示例市'), findsOneWidget);
     expect(api.forecastCalls, 1);
     expect(store.weatherCache().payload, isNotNull, reason: '取回来的要写进缓存');
     expect(find.byKey(const ValueKey('home-wx-stale')), findsNothing);
@@ -193,7 +200,7 @@ void main() {
         normalize(rawFixture(temp: 21.0), City(name: '示例市', latitude: 30.1, longitude: 118.2)));
     await pumpHome(tester);
     expect(find.text('21°'), findsOneWidget);
-    expect(find.text('晴 · 示例市'), findsOneWidget);
+    expect(find.textContaining('晴 · 示例市'), findsOneWidget);
     expect(api.forecastCalls, 0);
   });
 
@@ -206,9 +213,8 @@ void main() {
   testWidgets('v1.6.0 第 6 条：天气卡片里没有「体感」和「风」', (tester) async {
     setCity('示例市');
     await pumpHome(tester);
-    // 湿度、最低/最高还在
-    expect(find.text('湿度'), findsOneWidget);
-    expect(find.text('最低 / 最高'), findsOneWidget);
+    // v2.1.1：湿度也从小卡里拿掉了（要看去天气页），小卡只留天气和城市
+    expect(find.textContaining('湿度'), findsNothing);
     // 体感、风按凯森要求去掉
     expect(find.text('体感'), findsNothing);
     expect(find.text('风'), findsNothing);
@@ -216,6 +222,16 @@ void main() {
 
   testWidgets('v1.6.0 第 5 条：天气在最上面、课程在中间、速览在最下面', (tester) async {
     setCity('示例市');
+    // 速览列表一条都没有时不渲染（空态由「备忘」小卡承担），塞一条才有得比
+    final seeded = store.notes()
+      ..notes = <Note>[
+        Note(
+          id: 'n1', title: '占位的一条',
+          createdAt: '2026-09-19T07:00:00+08:00',
+          updatedAt: '2026-09-19T07:00:00+08:00',
+        ),
+      ];
+    store.saveNotes(seeded);
     await pumpHome(tester);
 
     final wx = tester.getTopLeft(find.byKey(const ValueKey('home-card-wx'))).dy;
@@ -226,6 +242,26 @@ void main() {
 
     expect(wx, lessThan(lessons), reason: '天气要排在课程上面');
     expect(lessons, lessThan(notes), reason: '课程要排在备忘录速览上面');
+  });
+
+  testWidgets('天气小卡和备忘小卡等宽等高（v2.1.1）', (tester) async {
+    setCity('示例市');
+    final seeded = store.notes()
+      ..notes = <Note>[
+        Note(
+          id: 'n1', title: '占位的一条',
+          createdAt: '2026-09-19T07:00:00+08:00',
+          updatedAt: '2026-09-19T07:00:00+08:00',
+        ),
+      ];
+    store.saveNotes(seeded);
+    await pumpHome(tester);
+
+    final wx = tester.getRect(find.byKey(const ValueKey('home-card-wx')));
+    final memo = tester.getRect(find.byKey(const ValueKey('home-card-notes-mini')));
+    expect(wx.width, closeTo(memo.width, 0.5), reason: '两张小卡要一样宽');
+    expect(wx.height, closeTo(memo.height, 0.5),
+        reason: '两张小卡要一样高，内容少的那张撑到和另一张齐平');
   });
 
   testWidgets('天气：失败但有旧缓存 → 显示旧数据标注', (tester) async {
@@ -333,8 +369,8 @@ void main() {
     expect(find.text('第四条不该出现'), findsNothing, reason: '速览最多 3 条');
     expect(find.byKey(const ValueKey('home-note-n1')), findsOneWidget,
         reason: '速览按 updatedAt 排，最新的三条里包含 n1');
-    // 摘要（标题右边那行）照旧一眼能看到
-    expect(find.text('1/2 项完成'), findsOneWidget);
+    // 摘要（标题下面那行）照旧一眼能看到
+    expect(find.textContaining('1/2 项完成'), findsOneWidget);
     // 但内容默认收起（v1.9.1，凯森要求）—— 里面的项一开始看不见
     expect(find.text('买菜'), findsNothing, reason: '默认收起，内容不该露出来');
     expect(find.text('拿快递'), findsNothing);
@@ -411,7 +447,7 @@ void main() {
     expect(items.length, 9, reason: '首页只显示前 6 项，第 7 项之后不能被冲掉');
     expect(items[8]['text'], '任务9');
     // 界面摘要同步更新
-    expect(find.text('1/9 项完成'), findsOneWidget);
+    expect(find.textContaining('1/9 项完成'), findsOneWidget);
   });
 
   testWidgets('小三角收放：默认收起，点开展开、再点收回去', (tester) async {

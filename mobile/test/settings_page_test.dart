@@ -15,6 +15,7 @@ import 'package:my_day_phone/notification_service.dart';
 import 'package:my_day_phone/store.dart';
 import 'package:my_day_phone/system_tweaks.dart';
 import 'package:my_day_phone/ui/settings_page.dart';
+import 'package:my_day_phone/update_checker.dart';
 import 'package:my_day_phone/weather_api.dart';
 
 /// 假接口：不联网，固定返回一个虚构城市。
@@ -652,6 +653,83 @@ void main() {
       expect(s.weatherCities.any((p) => p.id.startsWith('p')), isTrue,
           reason: '新地点的 id 用 store.newId 生成');
     });
+  });
+
+  // ---------- 检查更新（v2.1.1） ----------
+
+  /// 不走整壳：直接泵设置页，「检查更新」用注入的假结论，不联网。
+  Future<void> pumpSettings(
+    WidgetTester tester, {
+    Future<UpdateCheckResult> Function(String currentVersion)? checkUpdate,
+  }) async {
+    tester.view.physicalSize = const Size(1080, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: SettingsPage(store: store, checkUpdate: checkUpdate)),
+    ));
+    await tester.pumpAndSettle();
+    // 「关于」卡默认收起：先滚到它、点开、再把检查按钮滚到可见
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('s-about-toggle')),
+      find.byType(Scrollable).first,
+      const Offset(0, -300),
+    );
+    await tester.tap(find.byKey(const ValueKey('s-about-toggle')));
+    await tester.pumpAndSettle();
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('btn-check-update')),
+      find.byType(Scrollable).first,
+      const Offset(0, -300),
+    );
+  }
+
+  testWidgets('检查更新：有新版本就弹窗，给版本号和下载入口', (tester) async {
+    await pumpSettings(tester, checkUpdate: (current) async {
+      expect(current, isNotEmpty, reason: '当前版本号要传给检查器');
+      return UpdateCheckResult.available(const ReleaseInfo(
+        version: '9.9.9',
+        tagName: 'mobile-v9.9.9',
+        notes: '· 修了一些问题',
+        apkUrl: 'https://example.com/CloudLife-v9.9.9.apk',
+        releaseUrl: 'https://example.com/releases/tag/mobile-v9.9.9',
+      ));
+    });
+
+    await tester.tap(find.byKey(const ValueKey('btn-check-update')));
+    await tester.pumpAndSettle();
+
+    // 状态行和弹窗标题是同一句话，所以这里只要求「至少一处」
+    expect(find.textContaining('发现新版本 v9.9.9'), findsWidgets);
+    expect(find.textContaining('修了一些问题'), findsOneWidget,
+        reason: '弹窗里要带发布说明');
+    expect(find.byKey(const ValueKey('btn-download-update')), findsOneWidget,
+        reason: '弹窗里要有「去下载」');
+  });
+
+  testWidgets('检查更新：已是最新只更新状态行，不弹窗', (tester) async {
+    await pumpSettings(tester, checkUpdate: (current) async {
+      return const UpdateCheckResult.upToDate('已经是最新版本');
+    });
+
+    await tester.tap(find.byKey(const ValueKey('btn-check-update')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已经是最新版本'), findsOneWidget);
+    expect(find.byKey(const ValueKey('btn-download-update')), findsNothing,
+        reason: '没有新版本不该弹窗');
+  });
+
+  testWidgets('检查更新：失败给一句能看懂的原因', (tester) async {
+    await pumpSettings(tester, checkUpdate: (current) async {
+      return const UpdateCheckResult.error('网络断了');
+    });
+
+    await tester.tap(find.byKey(const ValueKey('btn-check-update')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('检查失败：网络断了'), findsOneWidget);
+    expect(find.byKey(const ValueKey('btn-download-update')), findsNothing);
   });
 
   group('备份 / 还原 / 清空', () {

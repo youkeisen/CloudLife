@@ -111,7 +111,9 @@ void main() {
     ]);
     await pumpApp(tester);
 
-    expect(find.text('★ 置顶的'), findsOneWidget);
+    // v2.1.1：置顶标记从「★ 前缀」换成了行首的星形图标（不用符号当图标）
+    expect(find.text('置顶的'), findsOneWidget);
+    expect(find.byIcon(Icons.star), findsOneWidget);
     // v1.9.1：副标题不再拼标签，就算数据里还带着
     expect(find.text('笔记 · 第一行'), findsOneWidget);
     expect(find.text('清单的'), findsOneWidget);
@@ -136,13 +138,13 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('note-group-pinned')));
     await tester.pumpAndSettle();
-    expect(find.text('★ 置顶的'), findsOneWidget);
+    expect(find.text('置顶的'), findsOneWidget);
     expect(find.text('普通的'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('note-group-archived')));
     await tester.pumpAndSettle();
     expect(find.text('归档的'), findsOneWidget);
-    expect(find.text('★ 置顶的'), findsNothing);
+    expect(find.text('置顶的'), findsNothing);
   });
 
   testWidgets('搜索：命中标题和清单项，没结果给提示', (tester) async {
@@ -284,7 +286,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(notesJson()['notes'].first['archived'], isTrue);
 
-    // 回列表：全部里没有，归档里有（置顶过所以带 ★ 前缀）
+    // 回列表：全部里没有，归档里有（置顶过，所以那一行行首有星形图标）
     // v1.6.0 界面中文化后，返回键的 tooltip 从 "Back" 变成「返回」，
       // flutter_test 的 pageBack() 只认英文 tooltip，这里改成点返回图标本身
       await tester.tap(find.byIcon(Icons.arrow_back).first);
@@ -292,7 +294,7 @@ void main() {
     expect(find.text('会置顶'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('note-group-archived')));
     await tester.pumpAndSettle();
-    expect(find.text('★ 会置顶'), findsOneWidget);
+    expect(find.text('会置顶'), findsOneWidget);
   });
 
   testWidgets('删除要二次确认，确认后列表和文件都没了', (tester) async {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'store.dart';
+import 'ui/design.dart';
 import 'ui/home_shell.dart';
 import 'weather_api.dart';
 
@@ -16,12 +17,12 @@ class MyDayApp extends StatefulWidget {
   /// 测试钩子：透传给设置页（选备份目录的假实现）。
   final Future<String?> Function()? pickDir;
 
-  /// 测试钩子：透传给设置页（假天气接口）。
+  /// 测试钩子：透传给设置页/功能页（假天气接口）。
   final WeatherApi? api;
 
-  /// 主色跟电脑版保持一致：浅色 #4B5BF7，深色亮一档 #7B86FF。
-  static const Color seedLight = Color(0xFF4B5BF7);
-  static const Color seedDark = Color(0xFF7B86FF);
+  /// 主色：靛蓝（v2.0 换掉刺眼的纯蓝）。深浅色各一档，色值在 [Tone] 里。
+  static const Color seedLight = Color(0xFF2B54C8);
+  static const Color seedDark = Color(0xFF6B8CF0);
 
   @override
   State<MyDayApp> createState() => _MyDayAppState();
@@ -38,8 +39,7 @@ class _MyDayAppState extends State<MyDayApp> {
     return MaterialApp(
       title: 'CloudLife',
       debugShowCheckedModeBanner: false,
-      // 界面中文化（v1.6.0，需求文档第 4 条）：日期选择器的 Cancel/OK、
-      // 星期缩写 S M T W T F S、月份名，以及其它 Material 内置文案都走这套。
+      // 界面中文化：日期选择器的 Cancel/OK、星期缩写、月份名等内置文案。
       locale: const Locale('zh', 'CN'),
       supportedLocales: const <Locale>[Locale('zh', 'CN'), Locale('en', 'US')],
       localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
@@ -73,78 +73,155 @@ ThemeMode themeModeFromSetting(String v) {
   }
 }
 
+/// 主题（v2.0）：令牌全部来自 [Tone] / [Type] / [R]。
+///
+/// 底色是**不透明实色** —— 任何 Scaffold 都自带正确底色，
+/// 不会再有「忘了垫背景变黑屏」那类 bug。
 ThemeData buildTheme(Brightness brightness) {
-  final scheme = ColorScheme.fromSeed(
-    seedColor: brightness == Brightness.dark
-        ? MyDayApp.seedDark
-        : MyDayApp.seedLight,
-    brightness: brightness,
-  );
   final dark = brightness == Brightness.dark;
-  // Liquid Glass：所有容器半透明 + 大圆角 + 无实体投影层级，
-  // 玻璃质感靠 Glass 组件的模糊与描边，主题只负责把底色调透。
-  const glassCardLight = Color(0x99FFFFFF);
-  const glassCardDark = Color(0x8C22252E);
-  final glassCard = dark ? glassCardDark : glassCardLight;
-  final outline = dark ? const Color(0x24FFFFFF) : const Color(0x66FFFFFF);
+  final tone = dark ? Tone.dark : Tone.light;
 
-  return ThemeData(
-    useMaterial3: true,
+  final scheme = ColorScheme.fromSeed(
+    seedColor: dark ? MyDayApp.seedDark : MyDayApp.seedLight,
+    brightness: brightness,
+  ).copyWith(
+    primary: tone.primary,
+    onPrimary: tone.onPrimary,
+    primaryContainer: tone.primarySoft,
+    onPrimaryContainer: tone.primary,
+    secondary: tone.primary,
+    onSecondary: tone.onPrimary,
+    tertiary: tone.accent,
+    error: tone.danger,
+    onError: tone.onPrimary,
+    surface: tone.surface,
+    onSurface: tone.ink900,
+    onSurfaceVariant: tone.ink500,
+    outline: tone.ink400,
+    outlineVariant: tone.ink200,
+    surfaceContainerHighest: tone.ink100,
+    surfaceContainerHigh: tone.ink100,
+    surfaceContainerLow: tone.surfaceSunk,
+    surfaceContainerLowest: tone.surface,
+  );
+
+  final base = ThemeData(brightness: brightness, useMaterial3: true);
+
+  return base.copyWith(
     colorScheme: scheme,
-    scaffoldBackgroundColor: Colors.transparent,
+    scaffoldBackgroundColor: tone.bg,
+    // 正文默认色 = 主文字色，没显式给颜色的 Text 都落在这一档。
+    textTheme: base.textTheme.apply(
+      bodyColor: tone.ink900,
+      displayColor: tone.ink900,
+    ),
     appBarTheme: AppBarTheme(
-      backgroundColor: Colors.transparent,
+      backgroundColor: tone.bg,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
-      foregroundColor: scheme.onSurface,
+      toolbarHeight: 56,
+      centerTitle: true,
+      // 二级页标题：17 / Bold 居中（原型里的 nav-bar）。
+      titleTextStyle: Type.h3
+          .copyWith(fontSize: 17, color: tone.ink900, letterSpacing: -0.17),
+      iconTheme: IconThemeData(color: tone.ink700, size: 22),
+      actionsIconTheme: IconThemeData(color: tone.ink700, size: 22),
     ),
     cardTheme: CardThemeData(
-      color: glassCard,
+      color: tone.surface,
       elevation: 0,
+      shadowColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: outline),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(R.md)),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: dark ? const Color(0xE622252E) : const Color(0xF2FFFFFF),
+      backgroundColor: tone.surface,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: outline),
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(R.lg)),
+      titleTextStyle: Type.h2.copyWith(color: tone.ink900),
+      contentTextStyle: Type.body.copyWith(color: tone.ink700),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: tone.surface,
+      modalBackgroundColor: tone.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(R.xl)),
       ),
     ),
     inputDecorationTheme: InputDecorationThemeData(
       filled: true,
-      fillColor: dark ? const Color(0x59FFFFFF) : const Color(0x66FFFFFF),
+      fillColor: tone.surface,
+      hintStyle: Type.body.copyWith(color: tone.ink300),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: outline),
+        borderRadius: BorderRadius.circular(R.sm),
+        borderSide: BorderSide(color: tone.ink200),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: outline),
+        borderRadius: BorderRadius.circular(R.sm),
+        borderSide: BorderSide(color: tone.ink200),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: scheme.primary, width: 1.4),
+        borderRadius: BorderRadius.circular(R.sm),
+        borderSide: BorderSide(color: tone.primary, width: 1.5),
       ),
     ),
-    navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: dark ? const Color(0x661E2028) : const Color(0x66FFFFFF),
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      height: 66,
-      indicatorColor: scheme.primary.withValues(alpha: 0.16),
+    chipTheme: ChipThemeData(
+      backgroundColor: tone.ink100,
+      selectedColor: tone.primarySoft,
+      side: BorderSide(color: tone.ink200),
+      labelStyle: Type.sm.copyWith(color: tone.ink500),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(R.pill)),
+      showCheckmark: false,
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: dark ? const Color(0xD922252E) : const Color(0xE6202228),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: tone.ink900,
+      contentTextStyle: Type.body.copyWith(color: tone.surface),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(R.sm)),
     ),
-    dividerTheme: DividerThemeData(color: outline, thickness: 1),
+    dividerTheme: DividerThemeData(color: tone.ink100, thickness: 1),
+    listTileTheme: ListTileThemeData(
+      iconColor: tone.primary,
+      textColor: tone.ink900,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith<Color?>(
+        (s) => s.contains(WidgetState.selected) ? tone.onPrimary : tone.surface,
+      ),
+      trackColor: WidgetStateProperty.resolveWith<Color?>(
+        (s) => s.contains(WidgetState.selected) ? tone.primary : tone.ink100,
+      ),
+      trackOutlineColor: WidgetStateProperty.resolveWith<Color?>(
+        (s) => s.contains(WidgetState.selected) ? tone.primary : tone.ink200,
+      ),
+    ),
+    checkboxTheme: CheckboxThemeData(
+      fillColor: WidgetStateProperty.resolveWith<Color?>(
+        (s) => s.contains(WidgetState.selected) ? tone.primary : null,
+      ),
+      side: BorderSide(color: tone.ink300, width: 1.5),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+    ),
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: tone.primary),
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: tone.primary,
+      selectionColor: tone.primarySoft,
+    ),
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
+      backgroundColor: tone.primary,
+      foregroundColor: tone.onPrimary,
+      elevation: 0,
+      highlightElevation: 0,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(R.lg)),
+      ),
+    ),
   );
 }

@@ -58,6 +58,37 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // ---------- v2.0：日·周·列表三种视图 ----------
+
+  testWidgets('日 / 周 / 列表三种视图都能切（v2.0 新增）', (tester) async {
+    addPeriods();
+    addLesson(lesson('l1', day: 1, name: '高等数学'));
+    addLesson(lesson('l2', day: 3, name: '大学物理', slot: 'p2'));
+    await pumpPage(tester);
+
+    // 列表视图：两门课排成一列
+    await tester.tap(find.byKey(const ValueKey('seg-list')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('courses-list')), findsOneWidget);
+    expect(find.text('高等数学'), findsOneWidget);
+    expect(find.text('大学物理'), findsOneWidget);
+
+    // 点日期条上的周三 → 切到日视图，只留那一天
+    await tester.tap(find.byKey(const ValueKey('day-3')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('day-col-3')), findsOneWidget);
+    expect(find.byKey(const ValueKey('day-col-1')), findsNothing,
+        reason: '日视图只显示选中的那一天');
+    expect(find.text('大学物理'), findsOneWidget);
+    expect(find.text('高等数学'), findsNothing);
+
+    // 回周视图：七列都回来
+    await tester.tap(find.byKey(const ValueKey('seg-week')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('day-col-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('day-col-3')), findsOneWidget);
+  });
+
   testWidgets('没设节次时显示引导', (tester) async {
     await pumpPage(tester);
     expect(find.text('还没有任何节次'), findsOneWidget);

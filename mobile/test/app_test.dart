@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_day_phone/app.dart';
 import 'package:my_day_phone/store.dart';
+import 'package:my_day_phone/ui/design.dart';
 
 void main() {
   late Directory tmp;
@@ -105,21 +106,50 @@ void main() {
 
     expect(find.byKey(const ValueKey('week-pill')), findsOneWidget);
     expect(find.byKey(const ValueKey('week-pill-off')), findsNothing);
-    final pill = tester.widget<Container>(find.byKey(const ValueKey('week-pill')));
-    final pillText = ((pill.child as Text?)!.data)!;
-    expect(RegExp(r'^第 \d+ 教学周$').hasMatch(pillText), isTrue,
-        reason: '圆牌文案应是「第 N 教学周」，实际：$pillText');
+    // v2.0：周次胶囊是个自绘组件（WeekChip），断言它里面的文案。
+    // 用正则而不是写死「第 1 教学周」：日期选择器里点的那个「1」不一定落在本周。
+    final pillTexts = tester
+        .widgetList<Text>(find.descendant(
+          of: find.byKey(const ValueKey('week-pill')),
+          matching: find.byType(Text),
+        ))
+        .map((t) => t.data)
+        .whereType<String>()
+        .toList();
+    expect(
+      pillTexts.any((t) => RegExp(r'^第 \d+ 教学周$').hasMatch(t)),
+      isTrue,
+      reason: '胶囊文案应是「第 N 教学周」，实际：$pillTexts',
+    );
   });
 
-  test('深浅色两套主题都能构建，玻璃染色自适应', () {
+  test('深浅色两套主题都能构建，配色跟主题走（v2.0 令牌）', () {
     final light = buildTheme(Brightness.light);
     final dark = buildTheme(Brightness.dark);
     expect(light.useMaterial3, isTrue);
     expect(dark.useMaterial3, isTrue);
-    expect(light.scaffoldBackgroundColor, Colors.transparent);
-    expect(dark.scaffoldBackgroundColor, Colors.transparent);
-    expect(light.cardTheme.color, isNot(dark.cardTheme.color),
-        reason: '玻璃染色的深浅要跟主题走');
-    expect(light.dialogTheme.backgroundColor, isNot(dark.dialogTheme.backgroundColor));
+
+    // 底色是**不透明实色**（不再是 transparent + 每页自己垫背景）：
+    // 这条守着「任何 Scaffold 都自带底色」，独立整页不会再有黑屏。
+    expect(light.scaffoldBackgroundColor, Tone.light.bg);
+    expect(dark.scaffoldBackgroundColor, Tone.dark.bg);
+    expect(light.scaffoldBackgroundColor.a, 1.0,
+        reason: '底色必须不透明，否则独立整页会露出路由遮罩的黑底');
+    expect(dark.scaffoldBackgroundColor.a, 1.0);
+
+    expect(light.cardTheme.color, Tone.light.surface);
+    expect(dark.cardTheme.color, Tone.dark.surface);
+
+    // 主色是靛蓝，深浅色各一档（v2.0 换掉了刺眼的纯蓝）。
+    expect(light.colorScheme.primary, Tone.light.primary);
+    expect(dark.colorScheme.primary, Tone.dark.primary);
+
+    // 深色模式背景不用纯黑。
+    expect(Tone.dark.bg, isNot(const Color(0xFF000000)),
+        reason: '深色底用 #131720，纯黑太硬');
+
+    // 层级靠极浅阴影 + 1px 边框，不用 Material 的 elevation。
+    expect(light.cardTheme.elevation, 0);
+    expect(dark.cardTheme.elevation, 0);
   });
 }

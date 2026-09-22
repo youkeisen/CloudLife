@@ -23,6 +23,20 @@ class NoteGroup {
 ///
 /// 以前这里还会按标签生成分组（`tag:xxx`），v1.9.1 起标签功能去掉了 ——
 /// 凯森 2026-09-21：「把笔记里的标签删除」。分组就剩这三个。
+/// 新建一条空笔记并加进 [notes]（**不落盘**，调用方自己 saveNotes）。
+/// 备忘录页的「新建」和功能页的「写备忘」共用这一份。
+Note newEmptyNote(Notes notes, {required String id, required String nowIso}) {
+  final n = Note(
+    id: id,
+    title: '',
+    type: NoteType.text,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  );
+  notes.notes.add(n);
+  return n;
+}
+
 List<NoteGroup> noteGroups(List<Note> notes) {
   final visible = notes.where((n) => !n.archived).toList();
   return <NoteGroup>[

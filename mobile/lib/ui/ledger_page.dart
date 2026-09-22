@@ -14,6 +14,7 @@ import '../ledger_icons.dart';
 import '../ledger_logic.dart';
 import '../models.dart';
 import '../store.dart';
+import 'design.dart';
 import 'ledger_edit_page.dart';
 
 class LedgerPage extends StatefulWidget {
@@ -134,7 +135,7 @@ class _LedgerPageState extends State<LedgerPage> {
             Expanded(
               child: ListView(
                 key: const ValueKey('ledger-list'),
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 100),
+                padding: const EdgeInsets.fromLTRB(Sp.gutter, 0, Sp.gutter, 100),
                 children: <Widget>[
                   _summaryCard(cs, summary, maxExpense),
                   const SizedBox(height: 10),
@@ -177,7 +178,7 @@ class _LedgerPageState extends State<LedgerPage> {
               monthLabel(_month),
               key: const ValueKey('ledger-month-label'),
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              style: Type.h2.copyWith(color: cs.onSurface),
             ),
           ),
           IconButton(
@@ -202,13 +203,12 @@ class _LedgerPageState extends State<LedgerPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text('本月支出',
-                style: TextStyle(fontSize: 12, color: cs.outline)),
+                style: Type.sm.copyWith(color: cs.outline)),
             const SizedBox(height: 4),
             Text(
               '¥${formatAmount(s.expense)}',
               key: const ValueKey('ledger-total'),
-              style: const TextStyle(
-                  fontSize: 32, fontWeight: FontWeight.w700, height: 1.1),
+              style: Type.display.copyWith(color: cs.onSurface),
             ),
             const SizedBox(height: 8),
             Row(
@@ -221,7 +221,7 @@ class _LedgerPageState extends State<LedgerPage> {
             if (s.income > 0) ...<Widget>[
               const SizedBox(height: 6),
               Text('本月收入 ¥${formatAmount(s.income)}',
-                  style: TextStyle(fontSize: 12, color: cs.outline)),
+                  style: Type.sm.copyWith(color: cs.outline)),
             ],
           ],
         ),
@@ -234,10 +234,11 @@ class _LedgerPageState extends State<LedgerPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(label, style: TextStyle(fontSize: 11, color: cs.outline)),
+          Text(label, style: Type.xs.copyWith(color: cs.outline)),
           const SizedBox(height: 2),
           Text(value,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              style: Type.sm.copyWith(
+                  color: cs.onSurface, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -258,13 +259,11 @@ class _LedgerPageState extends State<LedgerPage> {
           child: Row(
             children: <Widget>[
               Text(dayLabel(g.date),
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurfaceVariant)),
+                  style: Type.sm.copyWith(
+                      color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
               const Spacer(),
               Text('当日 ¥${formatAmount(g.dayExpense)}',
-                  style: TextStyle(fontSize: 12, color: cs.outline)),
+                  style: Type.sm.copyWith(color: cs.outline)),
             ],
           ),
         ),
@@ -273,7 +272,7 @@ class _LedgerPageState extends State<LedgerPage> {
           child: Column(
             children: <Widget>[
               for (var i = 0; i < g.records.length; i++) ...<Widget>[
-                if (i > 0) Divider(height: 1, color: cs.outlineVariant),
+                if (i > 0) const Divider(height: 1, thickness: 1),
                 _recordTile(cs, g.records[i], cats[g.records[i].categoryId]),
               ],
             ],
@@ -292,43 +291,35 @@ class _LedgerPageState extends State<LedgerPage> {
       onTap: () => _openEdit(r),
       onLongPress: () => _deleteRecord(r, cat),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Row(
           children: <Widget>[
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: cs.primaryContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, size: 20, color: cs.onPrimaryContainer),
-            ),
+            IconPlate(icon: icon),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(name,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w500)),
+                  Text(name, style: Type.body.copyWith(color: cs.onSurface)),
                   if (r.note.isNotEmpty)
-                    Text(r.note,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: cs.outline)),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(r.note,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Type.sm.copyWith(color: cs.outline)),
+                    ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
             Text(
-              // 收入显示成 +，支出显示成 -，颜色区分（红涨绿跌的国内习惯不适用，
-              // 这里按「钱出去了」用醒目色、「钱进来了」用低调色）
+              // 收入显示成 +，支出显示成 -，颜色区分（只有一个强调色，
+              // 所以「进来了」用次文字色、「出去了」用主文字色）
               '${r.isIncome ? '+' : '-'}${formatAmount(r.amount)}',
-              style: TextStyle(
-                fontSize: 15,
+              style: Type.body.copyWith(
                 fontWeight: FontWeight.w600,
-                color: r.isIncome ? cs.tertiary : cs.onSurface,
+                color: r.isIncome ? cs.onSurfaceVariant : cs.onSurface,
               ),
             ),
           ],
@@ -338,19 +329,20 @@ class _LedgerPageState extends State<LedgerPage> {
   }
 
   Widget _emptyHint(ColorScheme cs) {
+    final tone = Tone.of(context);
     return Padding(
       key: const ValueKey('ledger-empty'),
       padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 28),
       child: Column(
         children: <Widget>[
-          Icon(Icons.receipt_long_outlined, size: 46, color: cs.outline),
+          Icon(Icons.receipt_long_outlined, size: 40, color: tone.ink300),
           const SizedBox(height: 12),
-          const Text('这个月还没有记账',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+          Text('这个月还没有记账',
+              style: Type.h3.copyWith(color: tone.ink900)),
           const SizedBox(height: 6),
           Text('点右下角的「＋」记第一笔',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: cs.outline)),
+              style: Type.sm.copyWith(color: tone.ink500)),
         ],
       ),
     );

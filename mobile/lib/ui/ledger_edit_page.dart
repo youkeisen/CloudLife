@@ -17,7 +17,7 @@ import '../ledger_icons.dart';
 import '../ledger_logic.dart';
 import '../models.dart';
 import '../store.dart';
-import 'glass.dart';
+import 'design.dart';
 import 'ledger_categories_sheet.dart';
 
 class LedgerEditPage extends StatefulWidget {
@@ -211,9 +211,8 @@ class _LedgerEditPageState extends State<LedgerEditPage> {
     // 编辑页是独立路由：底下没有壳子的渐变背景，**必须自己垫一层**，
     // 否则透明的 Scaffold 会露出路由遮罩的黑底（和 v1.1.0 备忘录编辑页
     // 同一类 bug，这里一开始漏了 —— 2026-09-20 凯森反馈「进记账界面变黑」）。
-    return GlassBackdrop(
+    return PageSurface(
       child: Scaffold(
-      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(_isEditing ? '改一笔' : '记一笔'),
         actions: <Widget>[
@@ -226,7 +225,7 @@ class _LedgerEditPageState extends State<LedgerEditPage> {
       ),
       body: ListView(
         key: const ValueKey('ledger-edit-body'),
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+        padding: const EdgeInsets.fromLTRB(Sp.gutter, 4, Sp.gutter, 16),
         children: <Widget>[
           _amountCard(cs),
           const SizedBox(height: 10),
@@ -237,7 +236,7 @@ class _LedgerEditPageState extends State<LedgerEditPage> {
             const SizedBox(height: 8),
             Text(_error!,
                 key: const ValueKey('ledger-error'),
-                style: TextStyle(fontSize: 12, color: cs.error)),
+                style: Type.sm.copyWith(color: cs.error)),
           ],
           const SizedBox(height: 12),
           _keypad(cs),
@@ -258,7 +257,7 @@ class _LedgerEditPageState extends State<LedgerEditPage> {
           children: <Widget>[
             Row(
               children: <Widget>[
-                Text('金额', style: TextStyle(fontSize: 12, color: cs.outline)),
+                Text('金额', style: Type.sm.copyWith(color: cs.outline)),
                 const Spacer(),
                 SegmentedButton<String>(
                   key: const ValueKey('ledger-kind'),
@@ -272,8 +271,7 @@ class _LedgerEditPageState extends State<LedgerEditPage> {
                   showSelectedIcon: false,
                   style: ButtonStyle(
                     visualDensity: VisualDensity.compact,
-                    textStyle: WidgetStateProperty.all(
-                        const TextStyle(fontSize: 12)),
+                    textStyle: WidgetStateProperty.all(Type.sm),
                   ),
                   onSelectionChanged: (s) =>
                       setState(() => _kind = s.first),
@@ -285,20 +283,13 @@ class _LedgerEditPageState extends State<LedgerEditPage> {
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: <Widget>[
-                Text('¥',
-                    style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
-                        color: cs.outline)),
+                Text('¥', style: Type.h2.copyWith(color: cs.outline)),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     _amount.isEmpty ? '0' : _amount,
                     key: const ValueKey('ledger-amount'),
-                    style: TextStyle(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w700,
-                      height: 1.2,
+                    style: Type.display.copyWith(
                       color: _amount.isEmpty ? cs.outline : cs.onSurface,
                     ),
                   ),
@@ -336,13 +327,13 @@ class _LedgerEditPageState extends State<LedgerEditPage> {
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           child: Row(
             children: <Widget>[
-              Text('日期', style: TextStyle(fontSize: 14, color: cs.onSurface)),
+              Text('日期', style: Type.body.copyWith(color: cs.onSurface)),
               const Spacer(),
               Text(dayLabel(_date),
                   key: const ValueKey('ledger-date-text'),
-                  style: TextStyle(fontSize: 13, color: cs.outline)),
-              const SizedBox(width: 4),
-              Icon(Icons.chevron_right, size: 18, color: cs.outline),
+                  style: Type.sm.copyWith(color: cs.outline)),
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_right, size: 17, color: cs.outline),
             ],
           ),
         ),
@@ -388,7 +379,7 @@ class _LedgerEditPageState extends State<LedgerEditPage> {
                 key: const ValueKey('ledger-manage-cats'),
                 onPressed: _openCategories,
                 icon: const Icon(Icons.tune, size: 16),
-                label: const Text('管理分类', style: TextStyle(fontSize: 12)),
+                label: Text('管理分类', style: Type.sm),
               ),
             ),
           ],
@@ -421,9 +412,8 @@ class _LedgerEditPageState extends State<LedgerEditPage> {
               c.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: on ? FontWeight.w600 : FontWeight.w400,
+              style: Type.xs.copyWith(
+                fontWeight: on ? FontWeight.w600 : FontWeight.w500,
                 color: on ? cs.onPrimaryContainer : cs.onSurfaceVariant,
               ),
             ),
@@ -444,18 +434,17 @@ class _LedgerEditPageState extends State<LedgerEditPage> {
           padding: const EdgeInsets.all(3),
           child: Material(
             color: bg ?? cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             child: InkWell(
               key: keyId == null ? null : ValueKey<String>(keyId),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
               onTap: onTap ?? () => _tapKey(action),
               child: SizedBox(
-                height: 46,
+                height: 48,
                 child: Center(
                   child: Text(
                     label,
-                    style: TextStyle(
-                      fontSize: label == '完成' ? 15 : 18,
+                    style: Type.body.copyWith(
                       fontWeight: FontWeight.w600,
                       color: fg ?? cs.onSurface,
                     ),

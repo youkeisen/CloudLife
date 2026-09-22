@@ -17,6 +17,7 @@ import '../ledger_icons.dart';
 import '../ledger_logic.dart';
 import '../models.dart';
 import '../store.dart';
+import 'design.dart';
 
 /// 打开分类管理弹层。关掉时返回 true 表示「分类动过了」，
 /// 调用方可以据此刷新选中的分类。
@@ -118,6 +119,7 @@ class _LedgerCategoriesSheetState extends State<_LedgerCategoriesSheet> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final tone = Tone.of(context);
     final cats = sortedCategories(_ledger.categories);
 
     // 弹层最高占屏幕八成，分类多了能在里面滚。
@@ -134,7 +136,7 @@ class _LedgerCategoriesSheetState extends State<_LedgerCategoriesSheet> {
             width: 36,
             height: 4,
             decoration: BoxDecoration(
-              color: cs.outlineVariant,
+              color: tone.ink200,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -142,8 +144,7 @@ class _LedgerCategoriesSheetState extends State<_LedgerCategoriesSheet> {
             padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
             child: Row(
               children: <Widget>[
-                const Text('分类管理',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                Text('分类管理', style: context.h2),
                 const Spacer(),
                 TextButton(
                   key: const ValueKey('cats-done'),
@@ -171,7 +172,7 @@ class _LedgerCategoriesSheetState extends State<_LedgerCategoriesSheet> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Text(
               '点一下改名或换图标，长按删除',
-              style: TextStyle(fontSize: 11, color: cs.outline),
+              style: Type.xs.copyWith(color: cs.outline),
             ),
           ),
         ],
@@ -200,11 +201,11 @@ class _LedgerCategoriesSheetState extends State<_LedgerCategoriesSheet> {
               c.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11),
+              style: Type.xs.copyWith(color: cs.onSurface),
             ),
             if (n > 0)
               Text('$n 笔',
-                  style: TextStyle(fontSize: 9, color: cs.outline)),
+                  style: Type.xs.copyWith(color: cs.outline)),
           ],
         ),
       ),
@@ -226,8 +227,7 @@ class _LedgerCategoriesSheetState extends State<_LedgerCategoriesSheet> {
           children: <Widget>[
             Icon(Icons.add, size: 22, color: cs.primary),
             const SizedBox(height: 4),
-            Text('新建',
-                style: TextStyle(fontSize: 11, color: cs.primary)),
+            Text('新建', style: Type.xs.copyWith(color: cs.primary)),
           ],
         ),
       ),
@@ -310,7 +310,7 @@ class _CategoryDialogState extends State<_CategoryDialog> {
               onSubmitted: (_) => _submit(),
             ),
             const SizedBox(height: 8),
-            Text('图标', style: TextStyle(fontSize: 12, color: cs.outline)),
+            Text('图标', style: Type.sm.copyWith(color: cs.outline)),
             const SizedBox(height: 6),
             Wrap(
               key: const ValueKey('cat-icons'),

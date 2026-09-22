@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../backup.dart';
 import '../changelog.dart' show kChangelog;
@@ -24,9 +25,12 @@ import '../notification_service.dart';
 import '../reminder_scheduler.dart';
 import '../store.dart';
 import '../system_tweaks.dart';
+import '../update_checker.dart';
 import 'wheel_time_picker.dart';
 import '../weather_api.dart';
 import '../weather_logic.dart';
+import '../week.dart';
+import 'design.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -38,6 +42,7 @@ class SettingsPage extends StatefulWidget {
     this.api,
     this.pickTime,
     this.locate,
+    this.checkUpdate,
   });
 
   final Store store;
@@ -61,6 +66,10 @@ class SettingsPage extends StatefulWidget {
 
   /// 测试时注入假天气接口；不传就用真的 Open-Meteo。
   final WeatherApi? api;
+
+  /// 检查更新（测试注入用）：传入当前版本号，返回检查结论。
+  /// 不给就走真的 GitHub Releases。
+  final Future<UpdateCheckResult> Function(String currentVersion)? checkUpdate;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -277,10 +286,11 @@ class _SettingsPageState extends State<SettingsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             const Text('用这份备份覆盖当前全部数据？还原前会自动给现在的数据留一份备份。',
-                style: TextStyle(fontSize: 13)),
+                style: Type.sm),
             const SizedBox(height: 8),
             Text('导出于 $fileName',
-                style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.outline)),
+                style: Type.sm.copyWith(
+                    color: Theme.of(ctx).colorScheme.outline)),
           ],
         ),
         actions: <Widget>[
@@ -318,7 +328,7 @@ class _SettingsPageState extends State<SettingsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             const Text('课程、备忘录、天气缓存和设置都会被清掉。清空前会自动备份一次。',
-                style: TextStyle(fontSize: 13)),
+                style: Type.sm),
             const SizedBox(height: 12),
             TextField(
               key: const ValueKey('reset-word'),
@@ -638,18 +648,33 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final week = weekOf(DateTime.now(), _s.week1Monday);
     return ListView(
       key: const ValueKey('page-settings'),
-      // 底部留 110：悬浮底栏是盖在内容上的，不留会被挡住（凯森 v1.3.5 反馈）
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 110),
+      // 底部留白：悬浮底栏是盖在内容上的，不留会被挡住（凯森 v1.3.5 反馈）
+      padding: const EdgeInsets.only(bottom: Sp.bottomInset),
       children: <Widget>[
+        PageHead(
+          title: '设置',
+          subtitle: _s.campus.isEmpty ? '数据只存在本机' : '${_s.campus} · 数据只存在本机',
+          weekText: week == null ? '教学周未设置' : '第 $week 教学周',
+          weekStrong: week != null,
+          weekKey: week == null
+              ? const ValueKey('week-pill-off')
+              : const ValueKey('week-pill'),
+        ),
+        _profileCard(),
+        const _GroupPad(child: GroupLabel(text: '通用')),
         _cardCollapsible(context, '基本',
             key: const ValueKey('s-basic-card'),
             toggleKey: 's-basic-toggle',
             open: _basicOpen,
             onToggle: () { _basicOpen = !_basicOpen; _toggleCollapse('basic'); },
+            icon: Icons.tune,
+            tint: Tone.of(context).primarySoft,
+            tintColor: Tone.of(context).primary,
             children: <Widget>[
-          _field('称呼', '凯森 v1.4.4 要求加回来：显示在首页问候语里',
+          _field('称呼', '填了之后首页的问候语会带上',
               TextFormField(
                 key: const ValueKey('s-name'),
                 initialValue: _s.displayName,
@@ -714,6 +739,9 @@ class _SettingsPageState extends State<SettingsPage> {
             toggleKey: 's-bg-toggle',
             open: _bgOpen,
             onToggle: () { _bgOpen = !_bgOpen; _toggleCollapse('bg'); },
+            icon: Icons.notifications_none,
+            tint: Tone.of(context).successSoft,
+            tintColor: Tone.of(context).success,
             summary: _notifEnabled == false
                 ? '通知被关了'
                 : (_batOptIgnored == true ? '已放行' : null),
@@ -726,18 +754,18 @@ class _SettingsPageState extends State<SettingsPage> {
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
+                color: cs.error.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Row(children: <Widget>[
-                const Icon(Icons.notifications_off_outlined,
-                    size: 18, color: Colors.orange),
+                Icon(Icons.notifications_off_outlined,
+                    size: 18, color: cs.error),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Text(
                     '通知权限被关掉了，提醒到点也不会弹。'
                     '这是「设了提醒却没动静」最常见的原因。',
-                    style: TextStyle(fontSize: 12, height: 1.4),
+                    style: Type.sm.copyWith(color: cs.error),
                   ),
                 ),
               ]),
@@ -756,7 +784,7 @@ class _SettingsPageState extends State<SettingsPage> {
           const Text(
               '提醒是交给系统的闹钟来响的，App 就算被清掉到点也会通知你。'
               '手机上做了下面这几件事，提醒会更准时：',
-              style: TextStyle(fontSize: 12, height: 1.4)),
+              style: Type.sm),
           const SizedBox(height: 10),
           _dataLine(
             '电池优化白名单',
@@ -823,7 +851,7 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Text(
                 '原因：${NotificationService.lastPendingError}',
                 key: const ValueKey('s-pending-error'),
-                style: TextStyle(fontSize: 10, color: cs.outline, height: 1.35),
+                style: Type.xs.copyWith(color: cs.outline),
               ),
             ),
           if (Platform.isAndroid)
@@ -832,7 +860,7 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Text(
                 '上面的「自启动」不一定能跳对页面（各家手机藏的位置不一样）。'
                 '没跳到的话手动去：设置 → 应用管理 → CloudLife → 自启动。',
-                style: TextStyle(fontSize: 11, color: cs.outline, height: 1.4),
+                style: Type.xs.copyWith(color: cs.outline),
               ),
             ),
         ]),
@@ -840,13 +868,16 @@ class _SettingsPageState extends State<SettingsPage> {
             toggleKey: 's-weather-toggle',
             open: _weatherOpen,
             onToggle: () { _weatherOpen = !_weatherOpen; _toggleCollapse('weather'); },
+            icon: Icons.cloud_outlined,
+            tint: Tone.of(context).accentSoft,
+            tintColor: Tone.of(context).accent,
             summary: _s.weatherCities.isEmpty ? '还没设' : '${_s.weatherCities.length} 个地点',
             children: <Widget>[
           _rowTitle('我的地点', '选中即切换，右侧 × 移除'),
           if (_s.weatherCities.isEmpty)
             Text('还没有保存的地点',
                 key: const ValueKey('s-places-empty'),
-                style: TextStyle(fontSize: 12, color: cs.outline))
+                style: Type.sm.copyWith(color: cs.outline))
           else
             for (final p in _s.weatherCities)
               _placeRow(context, p),
@@ -892,7 +923,7 @@ class _SettingsPageState extends State<SettingsPage> {
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(_searchError!,
-                    style: TextStyle(fontSize: 12, color: cs.error)),
+                    style: Type.sm.copyWith(color: cs.error)),
               ),
             for (final c in _results)
               Padding(
@@ -905,13 +936,11 @@ class _SettingsPageState extends State<SettingsPage> {
                     child: Row(
                       children: <Widget>[
                         Expanded(
-                          child: Text(c.name, style: const TextStyle(fontSize: 13)),
+                          child: Text(c.name, style: Type.body),
                         ),
                         if (c.admin.isNotEmpty)
                           Text(c.admin,
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: Theme.of(context).colorScheme.outline)),
+                              style: Type.xs.copyWith(color: cs.outline)),
                       ],
                     ),
                   ),
@@ -924,9 +953,10 @@ class _SettingsPageState extends State<SettingsPage> {
           Row(
             key: const ValueKey('s-refresh-fixed'),
             children: <Widget>[
-              Text('自动刷新', style: TextStyle(fontSize: 13, color: cs.outline)),
+              Text('自动刷新', style: Type.sm.copyWith(color: cs.outline)),
               const Spacer(),
-              Text('每 10 分钟', style: TextStyle(fontSize: 12, color: cs.outline)),
+              Text('每 10 分钟',
+                  style: Type.sm.copyWith(color: cs.outline)),
             ],
           ),
         ]),
@@ -935,12 +965,15 @@ class _SettingsPageState extends State<SettingsPage> {
             toggleKey: 's-periods-toggle',
             open: _periodsOpen,
           onToggle: () { _periodsOpen = !_periodsOpen; _toggleCollapse('periods'); },
+          icon: Icons.schedule_outlined,
+          tint: Tone.of(context).primarySoft,
+          tintColor: Tone.of(context).primary,
           summary: _s.periods.isEmpty ? '还没设' : '${_s.periods.length} 个节次',
           children: <Widget>[
           if (_s.periods.isEmpty)
             Text('还没有节次，先添加几条吧',
                 key: const ValueKey('s-periods-empty'),
-                style: TextStyle(fontSize: 12, color: cs.outline))
+                style: Type.sm.copyWith(color: cs.outline))
           else
             for (final p in _s.periods)
               _PeriodRow(
@@ -964,13 +997,17 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 4),
           Text('点一下加一条，名称和起止时间随便填，支持中午时段、晚课、实训',
-              style: TextStyle(fontSize: 12, color: cs.outline)),
+              style: Type.sm.copyWith(color: cs.outline)),
         ]),
-        _cardCollapsible(context, '数据',
+        const _GroupPad(child: GroupLabel(text: '数据')),
+        _cardCollapsible(context, '数据管理',
             key: const ValueKey('s-data-card'),
             toggleKey: 's-data-toggle',
             open: _dataOpen,
             onToggle: () { _dataOpen = !_dataOpen; _toggleCollapse('data'); },
+            icon: Icons.storage_outlined,
+            tint: Tone.of(context).ink100,
+            tintColor: Tone.of(context).ink500,
             children: <Widget>[
           _dataLine(
             '备份位置',
@@ -1013,58 +1050,88 @@ class _SettingsPageState extends State<SettingsPage> {
               child: const Text('还原'),
             ),
           ),
-          _dataLine(
-            '清空全部数据',
-            '不可撤销，会先自动备份',
-            OutlinedButton(
-              key: const ValueKey('btn-reset'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.error,
-              ),
-              onPressed: _doReset,
-              child: const Text('清空'),
-            ),
-          ),
         ]),
         _cardCollapsible(context, '关于',
             key: const ValueKey('s-about-card'),
             toggleKey: 's-about-toggle',
             open: _aboutOpen,
             onToggle: () { _aboutOpen = !_aboutOpen; _toggleCollapse('about'); },
+            icon: Icons.info_outline,
+            tint: Tone.of(context).ink100,
+            tintColor: Tone.of(context).ink500,
             summary: _appVersion.isEmpty ? '' : 'v$_appVersion',
             children: <Widget>[
               Row(children: <Widget>[
-                const Text('CloudLife',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                Text('CloudLife', style: Type.h3),
                 const Spacer(),
                 Text(
                   _appVersion.isEmpty
                       ? '版本号读取中…'
                       : 'v$_appVersion（构建 $_appBuild）',
-                  style: TextStyle(fontSize: 12, color: cs.outline),
+                  style: Type.sm.copyWith(color: cs.outline),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: <Widget>[
+                OutlinedButton.icon(
+                  key: const ValueKey('btn-check-update'),
+                  onPressed: _checkingUpdate ? null : _checkUpdate,
+                  icon: const Icon(Icons.system_update_outlined, size: 18),
+                  label: const Text('检查更新'),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _updateStatus ?? '手动查一下是不是有了新版本',
+                    key: const ValueKey('update-status'),
+                    style: Type.sm.copyWith(color: cs.outline),
+                  ),
                 ),
               ]),
               const SizedBox(height: 12),
-              const Text('更新日志',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              const Text('更新日志', style: Type.h3),
               const SizedBox(height: 6),
               for (final entry in kChangelog) ...<Widget>[
                 Text('v${entry.$1}',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: cs.primary)),
+                    style: Type.sm.copyWith(
+                        fontWeight: FontWeight.w600, color: cs.primary)),
                 for (final line in entry.$2)
                   Padding(
                     padding: const EdgeInsets.only(left: 10, bottom: 2),
                     child: Text('· $line',
-                        style: TextStyle(
-                            fontSize: 12, color: cs.outline, height: 1.35)),
+                        style: Type.sm.copyWith(color: cs.outline)),
                   ),
                 const SizedBox(height: 8),
               ],
         ]),
+        // 危险操作与常规设置隔离，免得误触
+        const _GroupPad(child: GroupLabel(text: '危险操作')),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Sp.gutter, 0, Sp.gutter, 0),
+          child: GroupCard(
+            children: <Widget>[
+              SetRow(
+                key: const ValueKey('btn-reset'),
+                icon: Icons.delete_outline,
+                tint: Tone.of(context).dangerSoft,
+                tintColor: Tone.of(context).danger,
+                title: '清除所有本地数据',
+                subtitle: '不可撤销，会先自动备份',
+                danger: true,
+                onTap: _doReset,
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 14),
+          child: Center(
+            child: Text(
+              'CloudLife${_appVersion.isEmpty ? '' : ' v$_appVersion'} · 数据存储于本机',
+              style: Type.xs.copyWith(color: Tone.of(context).ink300),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1074,6 +1141,96 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _aboutOpen = false;
   String _appVersion = '';
   String _appBuild = '';
+
+  // ---------- 检查更新 ----------
+  bool _checkingUpdate = false;
+  String? _updateStatus;
+
+  /// 设置 → 关于 → 检查更新：手动查一次 GitHub Release。
+  /// 有新版本时弹更新窗（版本号 + 发布说明 + 下载入口）。
+  Future<void> _checkUpdate() async {
+    if (_checkingUpdate) return;
+    setState(() {
+      _checkingUpdate = true;
+      _updateStatus = '正在检查…';
+    });
+    final current = _appVersion.isEmpty ? '0.0.0' : _appVersion;
+    final hook = widget.checkUpdate;
+    final result = hook != null
+        ? await hook(current)
+        : await UpdateChecker().check(current);
+    if (!mounted) return;
+    setState(() {
+      _checkingUpdate = false;
+      switch (result.status) {
+        case UpdateStatus.upToDate:
+          _updateStatus = result.message ?? '已经是最新版本';
+        case UpdateStatus.available:
+          _updateStatus = '发现新版本 v${result.release!.version}';
+        case UpdateStatus.error:
+          _updateStatus = '检查失败：${result.message}';
+      }
+    });
+    if (result.status == UpdateStatus.available && result.release != null) {
+      _showUpdateDialog(result.release!);
+    }
+  }
+
+  /// 有新版本就弹这个窗。
+  void _showUpdateDialog(ReleaseInfo release) {
+    final tone = Tone.of(context);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('发现新版本 v${release.version}'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text('当前版本 v$_appVersion',
+                    style: Type.sm.copyWith(color: tone.ink400)),
+                const SizedBox(height: 8),
+                Text(
+                  release.notes.isEmpty ? '这次更新没有写说明。' : release.notes,
+                  style: Type.body.copyWith(color: tone.ink700),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('稍后'),
+          ),
+          FilledButton(
+            key: const ValueKey('btn-download-update'),
+            onPressed: () => _openUpdateUrl(ctx, release),
+            child: Text(release.apkUrl.isEmpty ? '打开发布页' : '去下载'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 去下载：优先 apk 附件，没有就退到 release 页面。用系统浏览器开。
+  Future<void> _openUpdateUrl(BuildContext dialogCtx, ReleaseInfo release) async {
+    final url = release.apkUrl.isEmpty ? release.releaseUrl : release.apkUrl;
+    Navigator.of(dialogCtx).pop();
+    if (url.isEmpty) {
+      _toast('没有拿到下载地址');
+      return;
+    }
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      _toast('打不开浏览器：$e');
+    }
+  }
 
   /// 电池优化白名单状态（v1.6.0，需求文档第 8 条）：null = 还没查到。
   bool? _batOptIgnored;
@@ -1132,49 +1289,124 @@ class _SettingsPageState extends State<SettingsPage> {
     required bool open,
     required VoidCallback onToggle,
     String? summary,
+    IconData? icon,
+    Color? tint,
+    Color? tintColor,
     required List<Widget> children,
   }) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      key: key,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          InkWell(
-            key: ValueKey(toggleKey),
-            borderRadius: BorderRadius.circular(8),
-            onTap: onToggle,
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(title,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600)),
+    final tone = Tone.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Sp.gutter, 0, Sp.gutter, Sp.s3),
+      child: Card2(
+        key: key,
+        padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            // 行头：图标 + 标题 +（收起时）右侧值 + 箭头
+            InkWell(
+              key: ValueKey(toggleKey),
+              onTap: onToggle,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: <Widget>[
+                    if (icon != null) ...<Widget>[
+                      IconPlate(
+                        icon: icon,
+                        size: 32,
+                        radius: 9,
+                        iconSize: 17,
+                        tint: tint,
+                        tintColor: tintColor,
+                      ),
+                      const SizedBox(width: 11),
+                    ],
+                    Expanded(
+                      child: Text(title, style: Type.h3.copyWith(color: tone.ink900)),
+                    ),
+                    if (!open && summary != null)
+                      Text(summary, style: Type.sm.copyWith(color: tone.ink400)),
+                    const SizedBox(width: 6),
+                    // 收起时朝下、展开时朝上（和首页速览的小三角一个意思）
+                    AnimatedRotation(
+                      turns: open ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: Icon(Icons.expand_more, size: 20, color: tone.ink300),
+                    ),
+                  ],
                 ),
-                if (!open && summary != null)
-                  Text(summary,
-                      style: TextStyle(fontSize: 12, color: cs.outline)),
-                const SizedBox(width: 6),
-                // 收起时朝下、展开时朝上（和首页速览的小三角一个意思）
-                AnimatedRotation(
-                  turns: open ? 0.5 : 0,
-                  duration: const Duration(milliseconds: 180),
-                  child: Icon(Icons.expand_more,
-                      size: 20, color: cs.outline),
-                ),
-              ],
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          if (open) ...children,
-        ],
+            if (open) ...<Widget>[
+              const SizedBox(height: 4),
+              ...children,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 账号卡：这一页的身份区（原设计完全没有）。称呼没填时给个占位。
+  Widget _profileCard() {
+    const c1 = Color(0xFF3D6BE5);
+    const c2 = Color(0xFF1F3F9E);
+    final name = _s.displayName.trim();
+    final week = weekOf(DateTime.now(), _s.week1Monday);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Sp.gutter, Sp.s3 + 2, Sp.gutter, 0),
+      child: Card2(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: <Widget>[
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: <Color>[c1, c2],
+                ),
+                borderRadius: BorderRadius.circular(R.md),
+              ),
+              child: Center(
+                child: Text(
+                  name.isEmpty ? '云' : name.substring(0, 1),
+                  style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    name.isEmpty ? '还没填称呼' : name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Type.h3.copyWith(color: context.tone.ink900),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    <String>[
+                      if (_s.campus.isNotEmpty) _s.campus,
+                      week == null ? '教学周未设置' : '第 $week 教学周',
+                      '数据存在本机',
+                    ].join(' · '),
+                    style: context.xs,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1190,11 +1422,11 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(label, style: const TextStyle(fontSize: 13)),
+                Text(label, style: Type.sm),
                 if (desc != null)
                   Text(desc,
-                      style: TextStyle(
-                          fontSize: 11, color: Theme.of(context).colorScheme.outline)),
+                      style: Type.xs.copyWith(
+                          color: Theme.of(context).colorScheme.outline)),
               ],
             ),
           ),
@@ -1211,10 +1443,10 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(label, style: const TextStyle(fontSize: 13)),
+          Text(label, style: Type.sm),
           Text(desc,
-              style: TextStyle(
-                  fontSize: 11, color: Theme.of(context).colorScheme.outline)),
+              style: Type.xs.copyWith(
+                  color: Theme.of(context).colorScheme.outline)),
         ],
       ),
     );
@@ -1233,7 +1465,7 @@ class _SettingsPageState extends State<SettingsPage> {
             color: current ? cs.primary : cs.outline,
           ),
           const SizedBox(width: 6),
-          Expanded(child: Text(p.label, style: const TextStyle(fontSize: 13))),
+          Expanded(child: Text(p.label, style: Type.body)),
           TextButton(
             key: ValueKey('s-place-use-${p.id}'),
             onPressed: current ? null : () => _selectPlace(p),
@@ -1259,10 +1491,10 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(label, style: const TextStyle(fontSize: 13)),
+                Text(label, style: Type.sm),
                 Text(desc,
-                    style: TextStyle(
-                        fontSize: 11, color: Theme.of(context).colorScheme.outline)),
+                    style: Type.xs.copyWith(
+                        color: Theme.of(context).colorScheme.outline)),
               ],
             ),
           ),
@@ -1272,6 +1504,19 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
+}
+
+/// 分组标题的统一外边距。
+class _GroupPad extends StatelessWidget {
+  const _GroupPad({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(Sp.gutter, Sp.s1, Sp.gutter, 0),
+        child: child,
+      );
 }
 
 /// 一行节次：名称 + 起止时间 + 删除。控制器跟着行走，改动通过回调落盘。
@@ -1369,7 +1614,7 @@ class _PeriodRowState extends State<_PeriodRow> {
       readOnly: true,
       showCursor: false,
       textAlign: TextAlign.center,
-      style: const TextStyle(fontSize: 14),
+      style: Type.body,
       onTap: () => _pickTime(isStart),
       decoration: InputDecoration(
         hintText: isStart ? '开始' : '结束',
@@ -1393,7 +1638,7 @@ class _PeriodRowState extends State<_PeriodRow> {
             child: TextField(
               key: ValueKey('s-period-label-${widget.period.id}'),
               controller: _label,
-              style: const TextStyle(fontSize: 14),
+              style: Type.body,
               decoration: const InputDecoration(
                 hintText: '节次名',
                 isDense: true,

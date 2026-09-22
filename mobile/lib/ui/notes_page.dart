@@ -15,7 +15,7 @@ import '../notification_service.dart';
 import '../notes_logic.dart';
 import '../store.dart';
 import 'wheel_time_picker.dart';
-import 'glass.dart';
+import 'design.dart';
 
 class NotesPage extends StatefulWidget {
   const NotesPage({super.key, required this.store});
@@ -62,14 +62,14 @@ class _NotesPageState extends State<NotesPage> {
       _group = 'all'; // 分组可能因为删标签等失效，回落到「全部」
     }
     final list = filteredNotes(all, _group, _query);
-    final cs = Theme.of(context).colorScheme;
+    final tone = Tone.of(context);
 
     return Column(
       key: const ValueKey('page-notes'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          padding: const EdgeInsets.fromLTRB(Sp.gutter, 8, Sp.gutter, 8),
           child: Row(children: <Widget>[
             Expanded(
               child: TextField(
@@ -78,7 +78,6 @@ class _NotesPageState extends State<NotesPage> {
                   isDense: true,
                   prefixIcon: Icon(Icons.search, size: 20),
                   hintText: '搜标题、内容、清单项',
-                  border: OutlineInputBorder(),
                 ),
                 onChanged: (v) => setState(() => _query = v),
               ),
@@ -88,22 +87,27 @@ class _NotesPageState extends State<NotesPage> {
               key: const ValueKey('btn-new-note'),
               onPressed: _createNote,
               icon: const Icon(Icons.add, size: 18),
-              label: const Text('新建备忘录'),
+              label: const Text('新建'),
             ),
           ]),
         ),
         SizedBox(
-          height: 44,
+          height: 46,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: Sp.gutter, vertical: 6),
             children: <Widget>[
               for (final g in groups)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
                     key: ValueKey('note-group-${g.key}'),
-                    label: Text('${g.label} ${g.count}'),
+                    label: Text(
+                      '${g.label} ${g.count}',
+                      style: Type.sm.copyWith(
+                        color: _group == g.key ? tone.accent : tone.ink500,
+                      ),
+                    ),
                     selected: _group == g.key,
                     onSelected: (_) => setState(() => _group = g.key),
                   ),
@@ -113,39 +117,58 @@ class _NotesPageState extends State<NotesPage> {
         ),
         Expanded(
           child: all.isEmpty
-              ? _emptyHint(cs,
+              ? _emptyHint(
                   key: 'notes-empty',
                   icon: Icons.edit_note_outlined,
                   title: '这里还没有东西',
-                  hint: '点「新建备忘录」开始写，支持笔记和可勾选的清单')
+                  hint: '点「新建」开始写，支持笔记和可勾选的清单')
               : list.isEmpty
-                  ? _emptyHint(cs,
+                  ? _emptyHint(
                       key: 'notes-no-match',
                       icon: Icons.search_off,
                       title: '没有符合条件的内容',
                       hint: '换个分组或搜索词试试')
                   : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                      padding: const EdgeInsets.fromLTRB(
+                          Sp.gutter, 4, Sp.gutter, Sp.bottomInset),
                       itemCount: list.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 8),
                       itemBuilder: (_, i) {
                         final n = list[i];
-                        return Card(
+                        return Card2(
                           key: ValueKey('note-card-${n.id}'),
-                          margin: EdgeInsets.zero,
-                          child: ListTile(
-                            title: Text(
-                              (n.pinned ? '★ ' : '') + (n.title.isEmpty ? '无标题' : n.title),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: Text(
-                              noteSubLine(n),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 12, color: cs.outline),
-                            ),
-                            onTap: () => _openEditor(n.id),
+                          padding: EdgeInsets.zero,
+                          onTap: () => _openEditor(n.id),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                            child: Row(children: <Widget>[
+                              if (n.pinned) ...<Widget>[
+                                Icon(Icons.star, size: 16, color: tone.accent),
+                                const SizedBox(width: 6),
+                              ],
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(
+                                      n.title.isEmpty ? '无标题' : n.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Type.body.copyWith(color: tone.ink900),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      noteSubLine(n),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Type.sm.copyWith(color: tone.ink300),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(Icons.chevron_right, size: 17, color: tone.ink300),
+                            ]),
                           ),
                         );
                       },
@@ -155,11 +178,12 @@ class _NotesPageState extends State<NotesPage> {
     );
   }
 
-  Widget _emptyHint(ColorScheme cs,
+  Widget _emptyHint(
       {required String key,
       required IconData icon,
       required String title,
       required String hint}) {
+    final tone = Tone.of(context);
     return Center(
       key: ValueKey<String>(key),
       child: Padding(
@@ -167,12 +191,13 @@ class _NotesPageState extends State<NotesPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Icon(icon, size: 46, color: cs.outline),
+            Icon(icon, size: 40, color: tone.ink300),
             const SizedBox(height: 12),
-            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+            Text(title, style: Type.h3.copyWith(color: tone.ink900)),
             const SizedBox(height: 6),
-            Text(hint, textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: cs.outline)),
+            Text(hint,
+                textAlign: TextAlign.center,
+                style: Type.sm.copyWith(color: tone.ink500)),
           ],
         ),
       ),
@@ -385,17 +410,22 @@ class _NoteEditPageState extends State<NoteEditPage> {
   ///
   /// 凯森 2026-09-21 的要求：方式的选择放在编辑页上，选好时间之后就能点。
   Widget _remindModeRow(Note n) {
-    final cs = Theme.of(context).colorScheme;
+    final tone = Tone.of(context);
     Widget chip(String label, String mode, String key) => ChoiceChip(
           key: ValueKey<String>(key),
-          label: Text(label),
+          label: Text(
+            label,
+            style: Type.sm.copyWith(
+              color: n.remindRepeat == mode ? tone.accent : tone.ink500,
+            ),
+          ),
           selected: n.remindRepeat == mode,
           onSelected: (_) => _setRemindMode(mode),
         );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('提醒方式', style: TextStyle(fontSize: 12, color: cs.outline)),
+        Text('提醒方式', style: Type.sm.copyWith(color: tone.ink300)),
         const SizedBox(height: 6),
         Wrap(spacing: 8, runSpacing: 6, children: <Widget>[
           chip('单次', '', 'remind-mode-once'),
@@ -405,7 +435,7 @@ class _NoteEditPageState extends State<NoteEditPage> {
         if (n.remindAfterDays) ...<Widget>[
           const SizedBox(height: 8),
           Row(children: <Widget>[
-            Text('几天后：', style: TextStyle(fontSize: 12, color: cs.outline)),
+            Text('几天后：', style: Type.sm.copyWith(color: tone.ink300)),
             SizedBox(
               width: 76,
               child: TextField(
@@ -451,7 +481,7 @@ class _NoteEditPageState extends State<NoteEditPage> {
           ),
           FilledButton(
             key: const ValueKey('btn-confirm-delete'),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: Tone.of(context).danger),
             onPressed: () {
               _timer?.cancel();
               _dirty = false;
@@ -480,10 +510,10 @@ class _NoteEditPageState extends State<NoteEditPage> {
   @override
   Widget build(BuildContext context) {
     final n = _note;
-    final cs = Theme.of(context).colorScheme;
+    final tone = Tone.of(context);
     if (n == null) {
       // 数据被别处删了之类的极端情况：给个提示直接回去。
-      return GlassBackdrop(
+      return PageSurface(
         child: Scaffold(
           appBar: AppBar(),
           body: const Center(child: Text('备忘录不存在')),
@@ -501,9 +531,8 @@ class _NoteEditPageState extends State<NoteEditPage> {
           if (_dirty) _save();
         }
       },
-      // 编辑页是独立路由：底下没有壳子的渐变背景，得自己垫一层，
-      // 否则透明的 Scaffold 会露出路由遮罩的黑底（v1.1.0 的 bug）。
-      child: GlassBackdrop(
+      // 编辑页是独立路由：自己垫一层实色底，不依赖底下有壳子。
+      child: PageSurface(
         child: Scaffold(
         key: const ValueKey('page-note-edit'),
         appBar: AppBar(
@@ -589,7 +618,7 @@ class _NoteEditPageState extends State<NoteEditPage> {
               },
             )
           else ...<Widget>[
-            Text('清单', style: TextStyle(fontSize: 12, color: cs.outline)),
+            Text('清单', style: Type.sm.copyWith(color: tone.ink300)),
             for (var i = 0; i < n.items.length; i++)
               Row(
                 key: ValueKey('todo-row-$i'),
@@ -641,7 +670,7 @@ class _NoteEditPageState extends State<NoteEditPage> {
                 ),
                 const SizedBox(width: 10),
                 Text('勾上就是做完，进度会同步到列表和首页',
-                    style: TextStyle(fontSize: 11, color: cs.outline)),
+                    style: Type.xs.copyWith(color: tone.ink300)),
               ]),
             ),
           ],
@@ -650,9 +679,8 @@ class _NoteEditPageState extends State<NoteEditPage> {
             Text(
               _dirty ? '有改动…' : '已保存',
               key: const ValueKey('note-status'),
-              style: TextStyle(
-                fontSize: 12,
-                color: _dirty ? cs.primary : cs.outline,
+              style: Type.sm.copyWith(
+                color: _dirty ? tone.accent : tone.ink300,
               ),
             ),
             const Spacer(),
@@ -679,7 +707,7 @@ class _NoteEditPageState extends State<NoteEditPage> {
             ),
             TextButton.icon(
               key: const ValueKey('btn-delete-note'),
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              style: TextButton.styleFrom(foregroundColor: tone.danger),
               onPressed: _deleteNote,
               icon: const Icon(Icons.delete_outline, size: 18),
               label: const Text('删除'),

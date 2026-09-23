@@ -1397,3 +1397,26 @@ xlsx / PDF 导入 + 手动加课。以后除非他主动再提，别主动把这
 版本 2.1.2+51，changelog 加了两条。老规矩：**APK 已出好等凯森装上确认，
 他点头之前不发 Release**。
 
+
+### v2.1.3：「记一笔」进去有两个顶栏（2026-09-23）
+
+凯森截图：从「功能 → 快捷操作 → 记一笔」进去，上面叠了两条标题栏
+（外层只有返回箭头、内层带「完成」）。
+
+根因：`features_page._open()` 是「把 body 包进带 AppBar 的 Scaffold」，
+而 `LedgerEditPage` **自带** Scaffold + 顶栏，于是套了两层。
+同页的天气 / 备忘录 / 记账三格没问题——那几个页面是裸 body（没有自己的
+Scaffold），包一层才对；全库只有记账编辑页属于「自带 Scaffold」这一类
+（grep `Scaffold(` 逐个核对过：notes_page 两处是编辑页与兜底页、
+ledger_edit_page 一处、home_shell 两处，都不经过 `_open`）。
+
+修法：`_open()` 旁边加一个 `_openPage()`（直接 push，不再包），
+「记一笔」改走它；注释里写清两类页面的区别。
+
+测试：`app_test` 加「功能页快捷操作进去只有一个 AppBar」，
+**反向验证过**——把入口改回 `_open()` 立刻变红（Found 2 widgets with type
+"AppBar"），恢复后绿。中间还踩了一下：一开始断言「完成」只有一个，
+实际记账页的数字键盘上也有个「完成」键，是正常的，断言改成 findsWidgets。
+
+版本 2.1.3+52，等凯森装机确认。
+

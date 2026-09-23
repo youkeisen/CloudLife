@@ -87,7 +87,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 #   +48 = 2.1.1 的第一个包。
 #   +49 = 天气小卡大温度下面加今天最低 / 最高。
 #   +50 = 设置 → 关于加「检查更新」（GitHub Releases + 弹窗 + 去下载）。
-version: 2.1.2+51
+version: 2.1.3+52
 
 environment:
   sdk: ^3.13.3

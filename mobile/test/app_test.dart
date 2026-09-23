@@ -85,6 +85,23 @@ void main() {
     expect(find.text('添加课程'), findsOneWidget);
   });
 
+  testWidgets('功能页「快捷操作 → 记一笔」进去只有一个顶栏', (tester) async {
+    await pumpApp(tester);
+    await tester.tap(find.text('功能').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('记一笔'));
+    await tester.pumpAndSettle();
+
+    // 记账编辑页自带 Scaffold + 「记一笔 / 完成」顶栏，
+    // 外面再包一层带 AppBar 的 Scaffold 就会出现两个顶栏
+    // （凯森 v2.1.2 反馈的截图就是这个）。
+    expect(find.byType(AppBar), findsOneWidget,
+        reason: '双层 Scaffold 会出两个顶栏');
+    expect(find.text('记一笔'), findsOneWidget);
+    // 顶栏右侧的「完成」：键盘上也有一个「完成」键，所以这里只要求至少一个
+    expect(find.text('完成'), findsWidgets);
+  });
+
   testWidgets('底栏没有凸起的加号（v1.3.2 应凯森要求去掉）', (tester) async {
     await pumpApp(tester);
     expect(find.byKey(const ValueKey('tab-quick-add')), findsNothing);

@@ -40,6 +40,13 @@ class FeaturesPage extends StatelessWidget {
     ));
   }
 
+  /// 页面**自带** Scaffold 的（比如记账编辑页有「记一笔 / 完成」）：
+  /// 直接 push，别再包一层带标题的 Scaffold —— 那样会出现两个顶部栏
+  /// （凯森 v2.1.2 反馈：从「快捷操作 → 记一笔」进去是双顶栏）。
+  void _openPage(BuildContext context, Widget page) {
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
+  }
+
   /// 「写备忘」：建一条空的直接进编辑页（和备忘录页的「新建」同一条路）。
   void _newNote(BuildContext context) {
     final notes = store.notes();
@@ -157,7 +164,7 @@ class FeaturesPage extends StatelessWidget {
                   QuickButton(
                     icon: Icons.add,
                     label: '记一笔',
-                    onTap: () => _open(context, '记一笔', LedgerEditPage(store: store)),
+                    onTap: () => _openPage(context, LedgerEditPage(store: store)),
                   ),
                   const SizedBox(width: Sp.s3),
                   QuickButton(
